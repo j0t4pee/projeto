@@ -6,9 +6,8 @@ import { useTheme } from 'next-themes'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
-  ArrowLeft, Save, Trash2, User, Phone, MapPin, Calendar, 
-  CheckCircle, CheckCircle2, XCircle, Edit2, X, Shield, Cake, 
-  AtSign, AlertCircle, AlertTriangle, Info, Heart, CalendarClock, Settings, LockKeyhole, BookOpen, Flame
+  ArrowLeft, Save, Trash2, User, CheckCircle, CheckCircle2, XCircle, Edit2, X, Shield, Cake, 
+  AlertCircle, AlertTriangle, Heart, CalendarClock, Settings, LockKeyhole, BookOpen, Flame
 } from 'lucide-react'
 
 interface AlertState {
@@ -49,15 +48,15 @@ export default function AcolitosPage() {
     numero: '',
     bairro: '',
     complemento: '',
-    data_nascimento: '',
+    data_nascimento: '', // Agora armazenará string no formato "DD/MM" visualmente
     perfil: 'padrao',
     senha: '123',
     genero: 'M',
     apenas_fim_de_semana: false,
     parceiro_id: '',
     acessos: [] as string[],
-    manuseia_missal: false,   // NOVO
-    manuseia_turibulo: false  // NOVO
+    manuseia_missal: false,
+    manuseia_turibulo: false
   })
 
   useEffect(() => {
@@ -68,7 +67,6 @@ export default function AcolitosPage() {
     try {
         const user = JSON.parse(authData)
         setUserRole(user.perfil)
-        // Apenas quem tem acesso 'equipe' ou é admin pode ver esta tela
         const hasTeamAccess = user.perfil === 'admin' || (user.acessos && user.acessos.includes('equipe'))
         
         if (!hasTeamAccess) {
@@ -102,9 +100,45 @@ export default function AcolitosPage() {
     finally { setLoading(false) }
   }
 
+  // --- LÓGICA DE DATAS ---
+  const getAniversariantes = () => {
+    return acolitos
+      .filter(a => a.data_nascimento)
+      .map(a => {
+        const [ano, mes, dia] = a.data_nascimento.split('-')
+        return {
+           ...a,
+           dia: parseInt(dia),
+           mes: parseInt(mes),
+           mesDisplay: mes,
+           diaDisplay: dia
+        }
+      })
+      .sort((a, b) => {
+        if (a.mes !== b.mes) return a.mes - b.mes
+        return a.dia - b.dia
+      })
+  }
+  const aniversariantesList = getAniversariantes()
+
+  // MÁSCARA DE DATA (DD/MM)
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value.replace(/\D/g, '') // Remove tudo que não é dígito
+    
+    if (v.length > 4) v = v.slice(0, 4) // Limita a 4 números (ddmm)
+
+    if (v.length > 2) {
+      v = v.replace(/^(\d{2})(\d)/, '$1/$2') // Coloca a barra depois do dia
+    }
+    
+    setForm({...form, data_nascimento: v})
+  }
+  // ----------------------
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/\D/g, ''); if(v.length>11)v=v.slice(0,11); v=v.replace(/^(\d{2})(\d)/g,'($1) $2'); v=v.replace(/(\d)(\d{4})$/,'$1-$2'); setForm({...form, telefone: v})
   }
+  
   const handleUsuarioChange = (e: React.ChangeEvent<HTMLInputElement>) => { setForm({ ...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '') }) }
 
   const toggleAccess = (moduleId: string) => {
@@ -117,19 +151,28 @@ export default function AcolitosPage() {
 
   function handleEdit(acolito: any) {
     setEditingId(acolito.id)
+    
+    // Converte YYYY-MM-DD (do banco) para DD/MM (visual)
+    let formattedDate = ''
+    if (acolito.data_nascimento) {
+        const [ano, mes, dia] = acolito.data_nascimento.split('-')
+        formattedDate = `${dia}/${mes}`
+    }
+
     setForm({
         nome: acolito.nome || '',
         sobrenome: acolito.sobrenome || '',
         usuario: acolito.usuario || '', telefone: acolito.telefone || '',
         rua: acolito.rua || '', numero: acolito.numero || '', bairro: acolito.bairro || '',
-        complemento: acolito.complemento || '', data_nascimento: acolito.data_nascimento || '',
+        complemento: acolito.complemento || '', 
+        data_nascimento: formattedDate,
         perfil: acolito.perfil || 'padrao', senha: acolito.senha || '123',
         genero: acolito.genero || 'M',
         apenas_fim_de_semana: acolito.apenas_fim_de_semana || false,
         parceiro_id: acolito.parceiro_id || '',
         acessos: acolito.acessos || [],
-        manuseia_missal: acolito.manuseia_missal || false,     // Carrega do banco
-        manuseia_turibulo: acolito.manuseia_turibulo || false  // Carrega do banco
+        manuseia_missal: acolito.manuseia_missal || false,
+        manuseia_turibulo: acolito.manuseia_turibulo || false
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -144,27 +187,38 @@ export default function AcolitosPage() {
   }
 
   async function handleSave() {
-    if (!form.nome || !form.usuario || !form.telefone || !form.data_nascimento) return triggerAlert('Campos Obrigatórios', 'Preencha Nome, Usuário, Telefone e Nascimento.', 'warning')
     try {
-        const dataNasc = form.data_nascimento === '' ? null : form.data_nascimento
+        let dataNascDB = null
+        
+        // Converte DD/MM (visual) para 2000-MM-DD (banco)
+        // Usamos ano 2000 (bissexto) para aceitar 29/02 sem erros e manter compatibilidade com tipo DATE
+        if (form.data_nascimento && form.data_nascimento.length === 5) {
+            const [dia, mes] = form.data_nascimento.split('/')
+            dataNascDB = `2000-${mes}-${dia}`
+        }
+
         const parceiro = form.parceiro_id === '' ? null : parseInt(form.parceiro_id)
         
         const payload = { 
             nome: form.nome, sobrenome: form.sobrenome, usuario: form.usuario, telefone: form.telefone,
             rua: form.rua, numero: form.numero, bairro: form.bairro, complemento: form.complemento,
-            data_nascimento: dataNasc, perfil: form.perfil, genero: form.genero,
+            data_nascimento: dataNascDB, 
+            perfil: form.perfil, genero: form.genero,
             apenas_fim_de_semana: form.apenas_fim_de_semana, parceiro_id: parceiro,
             acessos: form.acessos,
-            manuseia_missal: form.manuseia_missal,       // Salva habilidade Missal
-            manuseia_turibulo: form.manuseia_turibulo    // Salva habilidade Turíbulo
+            manuseia_missal: form.manuseia_missal,
+            manuseia_turibulo: form.manuseia_turibulo
         }
 
         if (editingId) {
             const { error } = await supabase.from('acolitos').update(payload).eq('id', editingId)
             if (error) throw error
         } else {
-            const { data: exists } = await supabase.from('acolitos').select('id').eq('usuario', form.usuario).single()
-            if (exists) throw new Error('Usuário já existe.')
+            if (form.usuario) {
+                const { data: exists } = await supabase.from('acolitos').select('id').eq('usuario', form.usuario).single()
+                if (exists) throw new Error('Usuário já existe.')
+            }
+            
             const { error } = await supabase.from('acolitos').insert([{ ...payload, ativo: true }])
             if (error) throw error
         }
@@ -213,7 +267,7 @@ export default function AcolitosPage() {
             
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Nome *</label><input type="text" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Nome</label><input type="text" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" /></div>
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Sobrenome</label><input type="text" value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" /></div>
               </div>
               
@@ -224,12 +278,25 @@ export default function AcolitosPage() {
                           <option value="F">Feminino</option>
                       </select>
                   </div>
-                  <div><label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-1"><AtSign size={12}/> Usuário *</label><input type="text" value={form.usuario} onChange={handleUsuarioChange} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none lowercase text-blue-400" /></div>
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Usuário</label>
+                      <input type="text" value={form.usuario} onChange={handleUsuarioChange} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" />
+                  </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">Telefone *</label><input type="text" value={form.telefone} onChange={handlePhoneChange} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" maxLength={15}/></div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">Nascimento *</label><input type="date" value={form.data_nascimento} onChange={e => setForm({...form, data_nascimento: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Telefone</label><input type="text" value={form.telefone} onChange={handlePhoneChange} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" maxLength={15}/></div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Aniversário</label>
+                    <input 
+                        type="text" 
+                        value={form.data_nascimento} 
+                        onChange={handleDateChange} 
+                        placeholder="DD/MM"
+                        maxLength={5}
+                        className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none" 
+                    />
+                </div>
               </div>
 
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-3">
@@ -265,7 +332,6 @@ export default function AcolitosPage() {
                   </div>
               </div>
 
-              {/* SEÇÃO HABILIDADES LITÚRGICAS */}
               <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
                   <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1">
                       <Flame size={10}/> Habilidades Litúrgicas
@@ -292,7 +358,6 @@ export default function AcolitosPage() {
                   </div>
               </div>
 
-              {/* SEÇÃO DE PERMISSÕES - EXCLUSIVO PARA ADMIN */}
               {userRole === 'admin' && (
                   <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3 animate-in fade-in">
                       <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1">
@@ -332,38 +397,75 @@ export default function AcolitosPage() {
           </div>
         </div>
 
-        <div className="space-y-4 order-2">
-          <h2 className="text-xl font-bold px-2">Equipe ({acolitos.length})</h2>
-          {loading ? <div className="text-center text-gray-500">Carregando...</div> : 
-           acolitos.length === 0 ? <div className="text-center text-gray-500 border border-dashed border-zinc-800 p-8 rounded-2xl">Nenhum acólito encontrado.</div> : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {acolitos.map((acolito) => (
-                <div key={acolito.id} onClick={() => handleEdit(acolito)} className={`bg-zinc-900 p-4 rounded-2xl border transition cursor-pointer hover:scale-[1.02] hover:shadow-xl ${editingId === acolito.id ? 'border-blue-500 ring-2 ring-blue-500/20' : acolito.ativo ? 'border-zinc-800 hover:border-zinc-700' : 'border-yellow-900/30 opacity-75'}`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${acolito.ativo ? 'bg-blue-600' : 'bg-zinc-700'}`}>{acolito.nome?.substring(0,2).toUpperCase()}</div>
-                    <div className="flex gap-1">
-                        <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} className={`p-1.5 rounded-full z-10 hover:bg-zinc-800 ${acolito.ativo ? 'text-green-500' : 'text-yellow-500'}`}>{acolito.ativo ? <CheckCircle size={20}/> : <XCircle size={20}/>}</button>
-                        {userRole === 'admin' && <button onClick={(e) => handleDelete(e, acolito.id)} className="p-1.5 text-zinc-600 hover:text-red-500 z-10 hover:bg-zinc-800"><Trash2 size={18}/></button>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <h3 className="font-bold truncate text-white flex items-center gap-2">{acolito.nome} {acolito.sobrenome} {acolito.genero === 'F' && <span className="text-[10px] text-pink-400 bg-pink-900/30 px-1 rounded">F</span>}</h3>
-                    <div className="flex gap-2 flex-wrap">
-                        <span className="text-[10px] font-mono bg-zinc-800 px-2 rounded text-zinc-400">@{acolito.usuario}</span>
-                        {acolito.apenas_fim_de_semana && <span className="text-[9px] font-bold bg-zinc-800 text-yellow-500 px-2 rounded border border-yellow-900/30 flex items-center gap-1"><CalendarClock size={10}/> FDS</span>}
-                        {acolito.parceiro_id && <span className="text-[9px] font-bold bg-pink-900/30 text-pink-400 px-2 rounded border border-pink-900/50 flex items-center gap-1"><Heart size={10}/> Dupla</span>}
-                        
-                        {/* ÍCONES DAS HABILIDADES */}
-                        {acolito.manuseia_missal && <span className="text-[9px] font-bold bg-blue-900/30 text-blue-400 px-2 rounded border border-blue-900/50 flex items-center gap-1" title="Missal"><BookOpen size={10}/> M</span>}
-                        {acolito.manuseia_turibulo && <span className="text-[9px] font-bold bg-orange-900/30 text-orange-400 px-2 rounded border border-orange-900/50 flex items-center gap-1" title="Turíbulo"><Flame size={10}/> T</span>}
+        <div className="space-y-8 order-2">
+            
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+             <div className="p-4 border-b border-zinc-800 flex items-center gap-2 bg-zinc-900/50">
+                 <Cake className="text-pink-500" size={20} />
+                 <h2 className="text-lg font-bold text-white">Próximos Aniversários</h2>
+             </div>
+             
+             {aniversariantesList.length === 0 ? (
+                 <div className="p-6 text-center text-gray-500 text-sm">Nenhum aniversário cadastrado.</div>
+             ) : (
+                 <div className="max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-zinc-950 text-gray-500 text-xs uppercase font-bold sticky top-0">
+                            <tr>
+                                <th className="p-3">Dia/Mês</th>
+                                <th className="p-3">Acólito</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                            {aniversariantesList.map((aniv) => (
+                                <tr key={aniv.id} className="hover:bg-zinc-800/50 transition-colors">
+                                    <td className="p-3 text-pink-400 font-mono font-bold">
+                                        {aniv.diaDisplay}/{aniv.mesDisplay}
+                                    </td>
+                                    <td className="p-3 text-white">
+                                        {aniv.nome} {aniv.sobrenome}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+             )}
+          </div>
 
-                        {acolito.acessos && acolito.acessos.length > 0 && <span className="text-[9px] font-bold bg-emerald-900/30 text-emerald-400 px-2 rounded border border-emerald-900/50 flex items-center gap-1"><LockKeyhole size={10}/> +{acolito.acessos.length}</span>}
+          <div>
+             <h2 className="text-xl font-bold px-2 mb-4">Equipe ({acolitos.length})</h2>
+             {loading ? <div className="text-center text-gray-500">Carregando...</div> : 
+               acolitos.length === 0 ? <div className="text-center text-gray-500 border border-dashed border-zinc-800 p-8 rounded-2xl">Nenhum acólito encontrado.</div> : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {acolitos.map((acolito) => (
+                    <div key={acolito.id} onClick={() => handleEdit(acolito)} className={`bg-zinc-900 p-4 rounded-2xl border transition cursor-pointer hover:scale-[1.02] hover:shadow-xl ${editingId === acolito.id ? 'border-blue-500 ring-2 ring-blue-500/20' : acolito.ativo ? 'border-zinc-800 hover:border-zinc-700' : 'border-yellow-900/30 opacity-75'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${acolito.ativo ? 'bg-blue-600' : 'bg-zinc-700'}`}>{acolito.nome?.substring(0,2).toUpperCase()}</div>
+                        <div className="flex gap-1">
+                            <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} className={`p-1.5 rounded-full z-10 hover:bg-zinc-800 ${acolito.ativo ? 'text-green-500' : 'text-yellow-500'}`}>{acolito.ativo ? <CheckCircle size={20}/> : <XCircle size={20}/>}</button>
+                            {userRole === 'admin' && <button onClick={(e) => handleDelete(e, acolito.id)} className="p-1.5 text-zinc-600 hover:text-red-500 z-10 hover:bg-zinc-800"><Trash2 size={18}/></button>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <h3 className="font-bold truncate text-white flex items-center gap-2">{acolito.nome} {acolito.sobrenome} {acolito.genero === 'F' && <span className="text-[10px] text-pink-400 bg-pink-900/30 px-1 rounded">F</span>}</h3>
+                        <div className="flex gap-2 flex-wrap">
+                            {/* Label de usuário removida */}
+                            
+                            {acolito.apenas_fim_de_semana && <span className="text-[9px] font-bold bg-zinc-800 text-yellow-500 px-2 rounded border border-yellow-900/30 flex items-center gap-1"><CalendarClock size={10}/> FDS</span>}
+                            {acolito.parceiro_id && <span className="text-[9px] font-bold bg-pink-900/30 text-pink-400 px-2 rounded border border-pink-900/50 flex items-center gap-1"><Heart size={10}/> Dupla</span>}
+                            
+                            {acolito.manuseia_missal && <span className="text-[9px] font-bold bg-blue-900/30 text-blue-400 px-2 rounded border border-blue-900/50 flex items-center gap-1" title="Missal"><BookOpen size={10}/> M</span>}
+                            {acolito.manuseia_turibulo && <span className="text-[9px] font-bold bg-orange-900/30 text-orange-400 px-2 rounded border border-orange-900/50 flex items-center gap-1" title="Turíbulo"><Flame size={10}/> T</span>}
+
+                            {acolito.acessos && acolito.acessos.length > 0 && <span className="text-[9px] font-bold bg-emerald-900/30 text-emerald-400 px-2 rounded border border-emerald-900/50 flex items-center gap-1"><LockKeyhole size={10}/> +{acolito.acessos.length}</span>}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+             )}
+          </div>
         </div>
       </main>
     </div>

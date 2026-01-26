@@ -57,10 +57,39 @@ const PLACE_COLORS: { [key: string]: string } = {
 const ROLE_BADGE_STYLE = "border-zinc-700 text-zinc-300 bg-zinc-800/80"
 
 const VERSICULOS = [
+  // Seus versículos originais
   { text: "Em todo o tempo ama o amigo e para a hora da angústia nasce o irmão.", ref: "Provérbios 17:17" },
   { text: "Tudo quanto fizerdes, fazei-o de todo o coração, como ao Senhor.", ref: "Colossenses 3:23" },
   { text: "Servi ao Senhor com alegria; e entrai diante dele com canto.", ref: "Salmos 100:2" },
-]
+
+  // Novos versículos - Amizade e União
+  { text: "Como o ferro com o ferro se aguça, assim o homem afia o rosto do seu amigo.", ref: "Provérbios 27:17" },
+  { text: "Melhor é serem dois do que um, porque têm melhor paga do seu trabalho.", ref: "Eclesiastes 4:9" },
+  { text: "Oh! quão bom e quão suave é que os irmãos vivam em união.", ref: "Salmos 133:1" },
+  { text: "O perfume e o incenso alegram o coração; assim a doçura do amigo pelo conselho cordial.", ref: "Provérbios 27:9" },
+  { text: "Portanto, consolai-vos uns aos outros e edificai-vos uns aos outros, como também o fazeis.", ref: "1 Tessalonicenses 5:11" },
+  
+  // Novos versículos - Amor
+  { text: "Todas as vossas coisas sejam feitas com amor.", ref: "1 Coríntios 16:14" },
+  { text: "Ninguém tem maior amor do que este, de dar alguém a sua vida pelos seus amigos.", ref: "João 15:13" },
+  { text: "Nós amamos porque ele nos amou primeiro.", ref: "1 João 4:19" },
+  { text: "Acima de tudo, porém, revistam-se do amor, que é o elo perfeito.", ref: "Colossenses 3:14" },
+  { text: "Amados, amemo-nos uns aos outros; porque o amor é de Deus.", ref: "1 João 4:7" },
+
+  // Novos versículos - Servir a Deus e ao Próximo
+  { text: "Eu e a minha casa serviremos ao Senhor.", ref: "Josué 24:15" },
+  { text: "Servi-vos uns aos outros pelo amor.", ref: "Gálatas 5:13" },
+  { text: "Cada um exerça o dom que recebeu para servir os outros, como bons despenseiros da multiforme graça de Deus.", ref: "1 Pedro 4:10" },
+  { text: "Tão-somente temei ao Senhor, e servi-o fielmente com todo o vosso coração.", ref: "1 Samuel 12:24" },
+  { text: "Pois nem mesmo o Filho do homem veio para ser servido, mas para servir.", ref: "Marcos 10:45" },
+
+  // Mistos (União, Humildade e Comunhão)
+  { text: "Dediquem-se uns aos outros com amor fraternal. Prefiram dar honra aos outros mais do que a vocês.", ref: "Romanos 12:10" },
+  { text: "Suportando-vos uns aos outros, e perdoando-vos uns aos outros.", ref: "Colossenses 3:13" },
+  { text: "Mas, se andarmos na luz, como ele na luz está, temos comunhão uns com os outros.", ref: "1 João 1:7" },
+  { text: "E consideremo-nos uns aos outros, para nos estimularmos ao amor e às boas obras.", ref: "Hebreus 10:24" },
+  { text: "Nisto todos conhecerão que sois meus discípulos, se vos amardes uns aos outros.", ref: "João 13:35" }
+];
 
 // --- COMPONENTES AUXILIARES ---
 
