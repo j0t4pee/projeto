@@ -13,13 +13,13 @@ import {
 } from 'lucide-react'
 
 // --- CONSTANTES & TIPOS ---
-const APP_VERSION = "v3.60.0-ui-refactor" 
+const APP_VERSION = "v3.71.0-calendar-list-fix" 
 
 const RELEASE_NOTES = [
-    "UI: Menu superior reorganizado e intuitivo.",
-    "Novo: Botão 'Regras do Sistema' adicionado ao menu.",
-    "Relatório: Espaçamento entre nomes reduzido.",
-    "Sistema: Geração de escalas com validação rigorosa."
+    "Configurações: Menu de restrições integrado ao menu geral.",
+    "Indisponibilidade: Novo calendário interativo para marcar dias.",
+    "Correção: Lista de restrições visível abaixo do calendário.",
+    "Sistema: Navegação simplificada."
 ]
 
 interface NewEscala {
@@ -32,7 +32,7 @@ interface AlertState {
     title: string; message: string; onConfirm?: () => void; isConfirmDialog: boolean;
 }
 
-// Interface para regras de exclusão de dias
+// Interface para regras de exclusão de dias (Global)
 interface ExclusionRule {
     id: string;
     start: number;
@@ -57,33 +57,24 @@ const PLACE_COLORS: { [key: string]: string } = {
 const ROLE_BADGE_STYLE = "border-zinc-700 text-zinc-300 bg-zinc-800/80"
 
 const VERSICULOS = [
-  // Seus versículos originais
   { text: "Em todo o tempo ama o amigo e para a hora da angústia nasce o irmão.", ref: "Provérbios 17:17" },
   { text: "Tudo quanto fizerdes, fazei-o de todo o coração, como ao Senhor.", ref: "Colossenses 3:23" },
   { text: "Servi ao Senhor com alegria; e entrai diante dele com canto.", ref: "Salmos 100:2" },
-
-  // Novos versículos - Amizade e União
   { text: "Como o ferro com o ferro se aguça, assim o homem afia o rosto do seu amigo.", ref: "Provérbios 27:17" },
   { text: "Melhor é serem dois do que um, porque têm melhor paga do seu trabalho.", ref: "Eclesiastes 4:9" },
   { text: "Oh! quão bom e quão suave é que os irmãos vivam em união.", ref: "Salmos 133:1" },
   { text: "O perfume e o incenso alegram o coração; assim a doçura do amigo pelo conselho cordial.", ref: "Provérbios 27:9" },
   { text: "Portanto, consolai-vos uns aos outros e edificai-vos uns aos outros, como também o fazeis.", ref: "1 Tessalonicenses 5:11" },
-  
-  // Novos versículos - Amor
   { text: "Todas as vossas coisas sejam feitas com amor.", ref: "1 Coríntios 16:14" },
   { text: "Ninguém tem maior amor do que este, de dar alguém a sua vida pelos seus amigos.", ref: "João 15:13" },
   { text: "Nós amamos porque ele nos amou primeiro.", ref: "1 João 4:19" },
   { text: "Acima de tudo, porém, revistam-se do amor, que é o elo perfeito.", ref: "Colossenses 3:14" },
   { text: "Amados, amemo-nos uns aos outros; porque o amor é de Deus.", ref: "1 João 4:7" },
-
-  // Novos versículos - Servir a Deus e ao Próximo
   { text: "Eu e a minha casa serviremos ao Senhor.", ref: "Josué 24:15" },
   { text: "Servi-vos uns aos outros pelo amor.", ref: "Gálatas 5:13" },
   { text: "Cada um exerça o dom que recebeu para servir os outros, como bons despenseiros da multiforme graça de Deus.", ref: "1 Pedro 4:10" },
   { text: "Tão-somente temei ao Senhor, e servi-o fielmente com todo o vosso coração.", ref: "1 Samuel 12:24" },
   { text: "Pois nem mesmo o Filho do homem veio para ser servido, mas para servir.", ref: "Marcos 10:45" },
-
-  // Mistos (União, Humildade e Comunhão)
   { text: "Dediquem-se uns aos outros com amor fraternal. Prefiram dar honra aos outros mais do que a vocês.", ref: "Romanos 12:10" },
   { text: "Suportando-vos uns aos outros, e perdoando-vos uns aos outros.", ref: "Colossenses 3:13" },
   { text: "Mas, se andarmos na luz, como ele na luz está, temos comunhão uns com os outros.", ref: "1 João 1:7" },
@@ -175,9 +166,8 @@ export default function Home() {
   // Modais
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isAutoModalOpen, setIsAutoModalOpen] = useState(false)
-  const [isRestrictionModalOpen, setIsRestrictionModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
-  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false) // Modal de regras
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
   
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'info', title: '', message: '', isConfirmDialog: false
@@ -216,13 +206,17 @@ export default function Home() {
   // Opção para o Dia 19
   const [includeDay19, setIncludeDay19] = useState(true)
   
-  // -- ESTADOS PARA EXCLUSÃO DE DIAS --
+  // -- ESTADOS PARA EXCLUSÃO DE DIAS GLOBAL --
   const [exclusionRules, setExclusionRules] = useState<ExclusionRule[]>([])
   const [exStart, setExStart] = useState('')
   const [exEnd, setExEnd] = useState('')
   
   const [fixedRules, setFixedRules] = useState<{ acolito: string, day: string }[]>([]) 
   const [newFixedRule, setNewFixedRule] = useState({ acolito: '', day: '' })
+
+  // -- ESTADOS PARA CALENDÁRIO DE RESTRIÇÕES --
+  const [resCalendarDate, setResCalendarDate] = useState(new Date()) // Data para navegar no calendário de restrições
+  const [selectedResAcolyte, setSelectedResAcolyte] = useState('')
 
   const [formData, setFormData] = useState({
     date: '', time: '', place: PLACES[0], obs: '',
@@ -231,8 +225,6 @@ export default function Home() {
         { nome: '', funcao: 'Vela' }
     ]
   })
-
-  const [resForm, setResForm] = useState({ acolito: '', data_inicio: '', data_fim: '' })
 
   const canManage = userProfile === 'admin' || userProfile === 'diretoria';
   const canEditContext = canManage; 
@@ -256,7 +248,7 @@ export default function Home() {
                 closeAlert()
                 return
             }
-            setIsModalOpen(false); setIsAutoModalOpen(false); setIsRestrictionModalOpen(false); 
+            setIsModalOpen(false); setIsAutoModalOpen(false); 
             setIsAboutModalOpen(false); setIsRulesModalOpen(false);
         }
     }
@@ -363,20 +355,34 @@ export default function Home() {
       return groups
   }, [paginatedEvents])
 
-  const handleAddRestriction = async () => {
-      if(!resForm.acolito || !resForm.data_inicio) return triggerAlert("Erro", "Preencha o acólito e a data de início.", "error")
-      
-      const dataFimFinal = resForm.data_fim ? resForm.data_fim : resForm.data_inicio;
+  // --- LÓGICA DO CALENDÁRIO DE RESTRIÇÕES ---
+  const handleToggleRestrictionDay = async (day: number) => {
+      if (!selectedResAcolyte) return triggerAlert("Erro", "Selecione um acólito primeiro.", "error");
 
-      await supabase.from('restricoes').insert({ 
-          acolito_nome: resForm.acolito, 
-          data_inicio: resForm.data_inicio, 
-          data_fim: dataFimFinal 
-      })
-      
-      setResForm({ acolito: '', data_inicio: '', data_fim: '' })
-      fetchRestrictions()
-  }
+      const year = resCalendarDate.getFullYear();
+      const month = resCalendarDate.getMonth();
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      // Verifica se já existe restrição neste dia para este acólito
+      const existing = restrictions.find(r => 
+          r.acolito_nome === selectedResAcolyte && 
+          r.data_inicio <= dateStr && 
+          (r.data_fim || r.data_inicio) >= dateStr
+      );
+
+      if (existing) {
+          // Remover restrição
+          await supabase.from('restricoes').delete().eq('id', existing.id);
+      } else {
+          // Adicionar restrição (Dia único)
+          await supabase.from('restricoes').insert({
+              acolito_nome: selectedResAcolyte,
+              data_inicio: dateStr,
+              data_fim: dateStr
+          });
+      }
+      fetchRestrictions();
+  };
 
   const handleDeleteRestriction = async (id: number) => {
       await supabase.from('restricoes').delete().eq('id', id)
@@ -484,11 +490,11 @@ export default function Home() {
                 
                 // Validação de Restrições
                 const hasRestriction = restrictions.some(r => {
-                     const isSameName = r.acolito_nome === fullName; 
-                     const rStart = r.data_inicio;
-                     const rEnd = r.data_fim || r.data_inicio;
-                     const isDateOverlap = dateStr >= rStart && dateStr <= rEnd;
-                     return isSameName && isDateOverlap;
+                      const isSameName = r.acolito_nome === fullName; 
+                      const rStart = r.data_inicio;
+                      const rEnd = r.data_fim || r.data_inicio;
+                      const isDateOverlap = dateStr >= rStart && dateStr <= rEnd;
+                      return isSameName && isDateOverlap;
                 });
                 if (hasRestriction) return false;
 
@@ -862,6 +868,64 @@ export default function Home() {
       return new Date(y, m-1, 19).getDate() === 19
   }
   const showDay19Option = checkDay19Exists()
+
+  // Helper para renderizar calendário de restrições
+  const renderResCalendar = () => {
+      const year = resCalendarDate.getFullYear();
+      const month = resCalendarDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDay = new Date(year, month, 1).getDay();
+      
+      const days = [];
+      for(let i=0; i<firstDay; i++) days.push(<div key={`empty-${i}`} className="w-8 h-8"/>);
+      
+      for(let d=1; d<=daysInMonth; d++) {
+          const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          
+          // Verifica se está restrito
+          const isRestricted = selectedResAcolyte && restrictions.some(r => 
+              r.acolito_nome === selectedResAcolyte && 
+              r.data_inicio <= dateStr && 
+              (r.data_fim || r.data_inicio) >= dateStr
+          );
+
+          days.push(
+              <button 
+                key={d} 
+                onClick={() => handleToggleRestrictionDay(d)}
+                disabled={!selectedResAcolyte}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all border
+                  ${!selectedResAcolyte ? 'opacity-30 cursor-not-allowed border-zinc-800 text-zinc-600' : 
+                    isRestricted 
+                      ? 'bg-red-900/40 border-red-500/50 text-red-400 hover:bg-red-900/60' 
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  }`}
+              >
+                  {d}
+              </button>
+          )
+      }
+
+      return (
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+               <div className="flex justify-between items-center mb-4">
+                  <button onClick={() => setResCalendarDate(new Date(year, month - 1, 1))} className="p-1 hover:bg-zinc-800 rounded text-zinc-400"><ChevronLeft size={16}/></button>
+                  <span className="text-sm font-bold text-zinc-200 uppercase tracking-wide">{resCalendarDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</span>
+                  <button onClick={() => setResCalendarDate(new Date(year, month + 1, 1))} className="p-1 hover:bg-zinc-800 rounded text-zinc-400"><ChevronRight size={16}/></button>
+              </div>
+              <div className="grid grid-cols-7 gap-2 text-center mb-1">
+                 {['D','S','T','Q','Q','S','S'].map((d, i) => <span key={i} className="text-[10px] text-zinc-500 font-bold">{d}</span>)}
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                  {days}
+              </div>
+              <div className="flex gap-4 justify-center mt-3 text-[10px] text-zinc-500">
+                   <div className="flex items-center gap-1"><div className="w-3 h-3 bg-zinc-900 border border-zinc-700 rounded"></div> Disponível</div>
+                   <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-900/40 border border-red-500/50 rounded"></div> Indisponível</div>
+              </div>
+          </div>
+      )
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans pb-20">
@@ -1259,16 +1323,59 @@ export default function Home() {
                         </div>
                         
                         <div className="space-y-4">
-                             {/* BOTÃO MOVIDO PARA CÁ */}
-                             <button onClick={() => setIsRestrictionModalOpen(true)} className="w-full h-10 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition border border-zinc-700">
-                                 <CalendarOff size={16}/> Gerenciar Restrições de Data
-                             </button>
+                            {/* NOVA ÁREA DE INDISPONIBILIDADES INTEGRADA */}
+                            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+                                <div className="mb-4">
+                                    <label className="text-sm font-bold text-white block mb-1 flex items-center gap-2"><CalendarOff size={14} className="text-red-500"/> Indisponibilidades</label>
+                                    <p className="text-xs text-zinc-400 leading-relaxed mb-3">
+                                        Selecione um acólito e marque no calendário os dias em que ele <strong>não poderá servir</strong>.
+                                    </p>
+                                    
+                                    <select 
+                                        value={selectedResAcolyte} 
+                                        onChange={e => setSelectedResAcolyte(e.target.value)} 
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-white outline-none focus:border-red-500 transition mb-3"
+                                    >
+                                        <option value="">Selecione o Acólito...</option>
+                                        {dbAcolitos.map(a => {
+                                            const fullName = `${a.nome} ${a.sobrenome || ''}`.trim();
+                                            return <option key={a.id || a.nome} value={fullName}>{fullName}</option>
+                                        })}
+                                    </select>
+                                    
+                                    {renderResCalendar()}
+
+                                    {/* LISTA DE RESTRIÇÕES EXISTENTES */}
+                                    <div className="mt-4 pt-4 border-t border-zinc-800">
+                                        <h4 className="text-xs font-bold text-zinc-500 uppercase mb-2">Restrições Salvas</h4>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                            {restrictions.length === 0 ? (
+                                                <p className="text-xs text-zinc-600">Nenhuma restrição registrada.</p>
+                                            ) : (
+                                                restrictions.map(res => (
+                                                    <div key={res.id} className="flex justify-between items-center bg-zinc-900 p-2 rounded border border-zinc-800">
+                                                        <div>
+                                                            <span className="text-xs font-bold text-zinc-300 block">{res.acolito_nome}</span>
+                                                            <span className="text-[10px] text-zinc-500">
+                                                                {new Date(res.data_inicio).toLocaleDateString('pt-BR', {timeZone:'UTC'})}
+                                                            </span>
+                                                        </div>
+                                                        <button onClick={() => handleDeleteRestriction(res.id)} className="text-zinc-600 hover:text-red-500 p-1">
+                                                            <Trash2 size={14}/>
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
                                 <div className="mb-4">
-                                    <label className="text-sm font-bold text-white block mb-1 flex items-center gap-2"><CalendarOff size={14} className="text-red-500"/> Pular Dias</label>
+                                    <label className="text-sm font-bold text-white block mb-1 flex items-center gap-2"><AlertCircle size={14} className="text-orange-500"/> Pular Dias (Global)</label>
                                     <p className="text-xs text-zinc-400 leading-relaxed">
-                                        Selecione dias ou períodos em que não haverá escala (ex: feriados sem missa, manutenções).
+                                        Dias em que não haverá escala para <strong>ninguém</strong> (ex: feriados sem missa).
                                     </p>
                                 </div>
 
@@ -1318,7 +1425,7 @@ export default function Home() {
                                 <div className="mb-4">
                                     <label className="text-sm font-bold text-white block mb-1 flex items-center gap-2"><CheckCircle2 size={14} className="text-blue-500"/> Escala Fixa (Prioridade)</label>
                                     <p className="text-xs text-zinc-400 leading-relaxed">
-                                        Adicione regras para garantir que determinados acólitos sirvam <strong>sempre</strong> em dias específicos (ex: Todo dia 15).
+                                        Regras para garantir que determinados acólitos sirvam <strong>sempre</strong> em dias específicos (ex: Todo dia 15).
                                     </p>
                                 </div>
 
@@ -1378,46 +1485,6 @@ export default function Home() {
                 )}
             </div>
         </div>
-      )}
-
-      {/* MODAL RESTRIÇÕES */}
-      {isRestrictionModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in zoom-in-95">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-y-auto relative">
-                  <button onClick={() => setIsRestrictionModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={20}/></button>
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><CalendarOff size={18} className="text-red-500"/> Indisponibilidades</h3>
-                  </div>
-                  <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 mb-6 space-y-3">
-                      <select value={resForm.acolito} onChange={e => setResForm({...resForm, acolito: e.target.value})} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-white outline-none">
-                          <option value="">Selecione o Acólito...</option>
-                          {dbAcolitos.map(a => {
-                              const fullName = `${a.nome} ${a.sobrenome || ''}`.trim();
-                              return <option key={a.id || a.nome} value={fullName}>{fullName}</option>
-                          })}
-                      </select>
-                      <div className="grid grid-cols-2 gap-2">
-                          <input type="date" value={resForm.data_inicio} onChange={e => setResForm({...resForm, data_inicio: e.target.value})} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-white outline-none"/>
-                          <input type="date" value={resForm.data_fim} onChange={e => setResForm({...resForm, data_fim: e.target.value})} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-white outline-none"/>
-                      </div>
-                      <button onClick={handleAddRestriction} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2.5 rounded-lg text-xs transition border border-zinc-700">Adicionar Restrição</button>
-                  </div>
-                  <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-zinc-500 uppercase">Registros Ativos</h4>
-                      {restrictions.length === 0 ? <p className="text-zinc-600 text-sm">Nenhuma restrição.</p> : (
-                          restrictions.map(res => (
-                              <div key={res.id} className="flex justify-between items-center bg-zinc-800 p-3 rounded-lg border border-zinc-700/50">
-                                  <div>
-                                      <span className="text-sm font-bold text-zinc-200 block">{res.acolito_nome}</span>
-                                      <span className="text-xs text-red-400">{new Date(res.data_inicio).toLocaleDateString('pt-BR',{timeZone:'UTC'})} até {new Date(res.data_fim).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</span>
-                                  </div>
-                                  <button onClick={() => handleDeleteRestriction(res.id)} className="text-zinc-500 hover:text-red-500"><Trash2 size={16}/></button>
-                              </div>
-                          ))
-                      )}
-                  </div>
-              </div>
-          </div>
       )}
 
       {/* MODAL EDITAR/CRIAR MISSA */}
