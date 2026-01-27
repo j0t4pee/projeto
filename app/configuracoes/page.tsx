@@ -1,18 +1,95 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { 
   ArrowLeft, Calendar as CalendarIcon, CalendarOff, 
   CheckCircle2, AlertCircle, Plus, Trash2, 
-  ChevronLeft, ChevronRight, User, Settings, Info, X
+  ChevronLeft, ChevronRight, User, Settings, Info, X, ChevronDown, Check
 } from 'lucide-react'
+import Link from 'next/link'
 
 interface AlertState {
     isOpen: boolean; type: 'error' | 'success' | 'warning' | 'info';
     title: string; message: string;
+}
+
+// --- COMPONENTE SELECT CUSTOMIZADO (RESOLVE FUNDO BRANCO E ESPAÇAMENTO) ---
+const CustomSelect = ({ 
+    options, 
+    value, 
+    onChange, 
+    placeholder = "Selecione...", 
+    icon: Icon 
+}: { 
+    options: { value: string, label: string }[], 
+    value: string, 
+    onChange: (val: string) => void, 
+    placeholder?: string,
+    icon?: React.ElementType
+}) => {
+    const [isOpen, setIsOpen] = useState(false)
+    const containerRef = useRef<HTMLDivElement>(null)
+
+    // Fecha ao clicar fora
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+
+    const selectedLabel = options.find(o => o.value === value)?.label
+
+    return (
+        <div className="relative w-full" ref={containerRef}>
+            {/* Botão Principal */}
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 h-11 flex items-center justify-between text-sm transition-all hover:border-zinc-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none ${isOpen ? 'ring-2 ring-blue-500/20 border-blue-500' : ''}`}
+            >
+                <div className="flex items-center gap-3 overflow-hidden">
+                    {Icon && <Icon size={18} className="text-zinc-500 shrink-0" />}
+                    <span className={`truncate font-medium ${value ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                        {selectedLabel || placeholder}
+                    </span>
+                </div>
+                <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Menu Dropdown Flutuante */}
+            {isOpen && (
+                <div className="absolute z-50 w-full mt-2 bg-zinc-900 border border-zinc-700/50 rounded-xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
+                    <div className="p-1.5 space-y-0.5">
+                        {options.map((option) => (
+                            <button
+                                key={option.value}
+                                onClick={() => {
+                                    onChange(option.value)
+                                    setIsOpen(false)
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-sm rounded-lg flex items-center justify-between transition-colors ${
+                                    value === option.value 
+                                        ? 'bg-blue-600 text-white font-medium' 
+                                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                }`}
+                            >
+                                <span className="truncate">{option.label}</span>
+                                {value === option.value && <Check size={14} />}
+                            </button>
+                        ))}
+                        {options.length === 0 && (
+                            <div className="px-4 py-3 text-sm text-zinc-500 text-center">Nenhuma opção disponível</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    )
 }
 
 export default function SettingsPage() {
@@ -34,6 +111,14 @@ export default function SettingsPage() {
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'info', title: '', message: ''
   })
+
+  // Transforma os acólitos em opções para o CustomSelect
+  const acoliteOptions = useMemo(() => {
+      return dbAcolitos.map(a => ({
+          value: `${a.nome} ${a.sobrenome}`.trim(),
+          label: `${a.nome} ${a.sobrenome}`.trim()
+      }))
+  }, [dbAcolitos])
 
   useEffect(() => {
     const authData = localStorage.getItem('auth_token')
@@ -186,7 +271,6 @@ export default function SettingsPage() {
               </div>
               <div className="grid grid-cols-7 gap-3 flex-1 content-start">{days}</div>
               
-              {/* LEGENDA CORRIGIDA */}
               <div className="flex items-center justify-center gap-8 mt-8 pt-5 border-t border-zinc-800">
                    <div className="flex items-center gap-2.5">
                        <div className="w-3.5 h-3.5 bg-zinc-900 border border-zinc-700 rounded-full"></div> 
@@ -233,21 +317,15 @@ export default function SettingsPage() {
                             <h2 className="text-xl font-bold text-white flex items-center gap-2"><CalendarOff className="text-red-500"/> Indisponibilidade Individual</h2>
                             <p className="text-sm text-zinc-400 mt-1">Selecione um acólito e clique nos dias para bloquear.</p>
                         </div>
-                        <div className="w-full md:w-64 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800 flex items-center gap-2 shadow-sm">
-                            <User size={18} className="text-zinc-500 ml-2"/>
-                            <select 
+                        {/* SELECT CUSTOMIZADO */}
+                        <div className="w-full md:w-72">
+                            <CustomSelect 
                                 value={selectedResAcolyte} 
-                                onChange={e => setSelectedResAcolyte(e.target.value)} 
-                                className="w-full bg-zinc-900 text-sm text-white outline-none font-medium h-9 border-none focus:ring-0 appearance-none cursor-pointer"
-                                style={{ colorScheme: 'dark' }}
-                            >
-                                <option value="" className="text-zinc-500">Selecione o Acólito...</option>
-                                {dbAcolitos.map(a => (
-                                    <option key={a.id} value={`${a.nome} ${a.sobrenome}`.trim()}>
-                                        {`${a.nome} ${a.sobrenome}`.trim()}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={setSelectedResAcolyte} 
+                                options={acoliteOptions}
+                                placeholder="Selecione o Acólito..."
+                                icon={User}
+                            />
                         </div>
                     </div>
 
@@ -256,7 +334,7 @@ export default function SettingsPage() {
                     </div>
                 </div>
 
-                {/* BLOCO 2: LISTA DE RESTRIÇÕES SALVAS (MOVIDO PARA BAIXO) */}
+                {/* BLOCO 2: LISTA DE RESTRIÇÕES SALVAS */}
                 <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6">
                     <div className="flex items-center gap-2 mb-6">
                         <Info className="text-blue-500" size={20}/>
@@ -329,15 +407,14 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="space-y-3 mb-4">
-                            <select 
+                            {/* SELECT CUSTOMIZADO TAMBÉM NA ESCALA FIXA */}
+                            <CustomSelect 
                                 value={newFixedRule.acolito} 
-                                onChange={e => setNewFixedRule({...newFixedRule, acolito: e.target.value})} 
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500 transition cursor-pointer"
-                                style={{ colorScheme: 'dark' }}
-                            >
-                                <option value="">Selecione o Acólito...</option>
-                                {dbAcolitos.map(a => <option key={a.id} value={`${a.nome} ${a.sobrenome}`.trim()}>{`${a.nome} ${a.sobrenome}`.trim()}</option>)}
-                            </select>
+                                onChange={(val) => setNewFixedRule({...newFixedRule, acolito: val})} 
+                                options={acoliteOptions}
+                                placeholder="Selecione o Acólito..."
+                            />
+                            
                             <div className="flex gap-2">
                                 <input type="text" inputMode="numeric" placeholder="Dia (1-31)" value={newFixedRule.day} onChange={e => setNewFixedRule({...newFixedRule, day: e.target.value.replace(/\D/g, '')})} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-white outline-none focus:border-emerald-500 transition text-center font-bold" maxLength={2}/>
                                 <button onClick={addFixedRule} className="h-[46px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition shadow-lg shadow-emerald-900/20"><Plus size={20}/></button>

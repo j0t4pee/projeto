@@ -6,18 +6,18 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { 
   Plus, X, Clock, Users, LogOut, Trash2, Save, FileText, Edit2, 
-  Filter, Eye, ChevronDown, Calendar as CalendarIcon, CalendarOff, // [!code ++]
+  Filter, Eye, ChevronDown, Calendar as CalendarIcon, CalendarOff, 
   Wand2, ChevronLeft, ChevronRight, Settings, ClipboardList, 
   CheckCircle2, AlertCircle, Info, Download, AlertTriangle, 
   Search, DollarSign, Flame, BookOpen 
 } from 'lucide-react'
 
-const APP_VERSION = "v3.85.1-bugfix" 
+const APP_VERSION = "v3.85.2-ui-fix" 
 
 const RELEASE_NOTES = [
     "Sistema: Configurações movidas para página dedicada.",
     "Gerador: Nova opção 'Apenas 1 acólito (Quarta/Sexta)'.",
-    "UI: Tela inicial simplificada."
+    "UI: Corrigida cor dos nomes nos cards de missa."
 ]
 
 interface NewEscala {
@@ -30,7 +30,6 @@ interface AlertState {
     title: string; message: string; onConfirm?: () => void; isConfirmDialog: boolean;
 }
 
-// ... (Resto das constantes e interfaces permanecem iguais)
 const ROLES = ['Missal', 'Vela', 'Turíbulo', 'Naveta']
 const ROLE_SIGLA: { [key: string]: string } = { 'Missal': 'M', 'Vela': 'V', 'Turíbulo': 'T', 'Naveta': 'N' }
 const PLACES = ["São José Operário", "Capela Nsa. Sra. das Graças", "Nsa. Sra. da Abadia", "Santa Clara"]
@@ -955,7 +954,11 @@ export default function Home() {
                                                   <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800/50">
                                                       {evt.acolitos.map((ac: any, idx: number) => (
                                                           <div key={idx} className="flex items-center gap-2">
-                                                              <span className={`text-xs font-semibold truncate ${ac.nome.toLowerCase().includes(userName.toLowerCase()) ? 'text-blue-400' : 'text-zinc-300'}`}>
+                                                              {/* [!code --] Linha removida: cor azul condicional */}
+                                                              {/* <span className={`text-xs font-semibold truncate ${ac.nome.toLowerCase().includes(userName.toLowerCase()) ? 'text-blue-400' : 'text-zinc-300'}`}> */}
+                                                              
+                                                              {/* [!code ++] Linha nova: cor padrão para todos */}
+                                                              <span className="text-xs font-semibold truncate text-zinc-300">
                                                                   {ac.nome}
                                                               </span>
                                                               <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ml-2 ${ROLE_BADGE_STYLE}`}>
