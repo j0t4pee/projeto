@@ -361,6 +361,9 @@ export default function Home() {
 
                 if (!ac.ativo) return false
                 if (team.includes(fullName)) return false
+                if (team.length === 3) {
+    team.pop() // Remove o Turíbulo se não houver um 4º (Naveta) para paridade
+}
                 
                 const hasRestriction = restrictions.some(r => {
                       const isSameName = r.acolito_nome === fullName; 

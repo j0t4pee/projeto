@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Save, Trash2, User, CheckCircle2, XCircle, Edit2, X, 
   Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, Settings, 
-  BookOpen, Flame, Plus, PartyPopper, Search, Check, Shield
+  BookOpen, Flame, Plus, PartyPopper, Search, Check, Shield, Clock, LockKeyhole
 } from 'lucide-react'
 
 // --- Tipos e Interfaces ---
@@ -47,7 +47,9 @@ export default function AcolitosPage() {
     nome: '', sobrenome: '', usuario: '', telefone: '', rua: '', numero: '', bairro: '', complemento: '', 
     data_nascimento: '', perfil: 'padrao', senha: '123', genero: 'M',
     apenas_fim_de_semana: false, parceiro_id: '', acessos: [] as string[],
-    manuseia_missal: false, manuseia_turibulo: false
+    manuseia_missal: false, manuseia_turibulo: false,
+    disponivel_inicio: '00:00', // NOVO: Hora de inicio
+    disponivel_fim: '23:59'     // NOVO: Hora de fim
   })
 
   // --- Efeitos Iniciais ---
@@ -143,7 +145,8 @@ export default function AcolitosPage() {
       setForm({ 
         nome: '', sobrenome: '', usuario: '', telefone: '', rua: '', numero: '', bairro: '', complemento: '', data_nascimento: '', 
         perfil: 'padrao', senha: '123', genero: 'M', apenas_fim_de_semana: false, parceiro_id: '', acessos: [],
-        manuseia_missal: false, manuseia_turibulo: false
+        manuseia_missal: false, manuseia_turibulo: false,
+        disponivel_inicio: '00:00', disponivel_fim: '23:59'
       })
       setIsFormOpen(true)
   }
@@ -161,7 +164,9 @@ export default function AcolitosPage() {
         data_nascimento: formattedDate, perfil: acolito.perfil || 'padrao', senha: acolito.senha || '123',
         genero: acolito.genero || 'M', apenas_fim_de_semana: acolito.apenas_fim_de_semana || false,
         parceiro_id: acolito.parceiro_id || '', acessos: acolito.acessos || [],
-        manuseia_missal: acolito.manuseia_missal || false, manuseia_turibulo: acolito.manuseia_turibulo || false
+        manuseia_missal: acolito.manuseia_missal || false, manuseia_turibulo: acolito.manuseia_turibulo || false,
+        disponivel_inicio: acolito.disponivel_inicio || '00:00',
+        disponivel_fim: acolito.disponivel_fim || '23:59'
     })
     setIsFormOpen(true)
   }
@@ -175,7 +180,6 @@ export default function AcolitosPage() {
             dataNascDB = `2000-${mes}-${dia}`
         }
         
-        // Garante que é numérico ou null
         const novoParceiroId = form.parceiro_id && form.parceiro_id !== '' ? parseInt(form.parceiro_id) : null
         
         const payload = { 
@@ -183,29 +187,22 @@ export default function AcolitosPage() {
             rua: form.rua, numero: form.numero, bairro: form.bairro, complemento: form.complemento,
             data_nascimento: dataNascDB, perfil: form.perfil, genero: form.genero,
             apenas_fim_de_semana: form.apenas_fim_de_semana, parceiro_id: novoParceiroId,
-            acessos: form.acessos, manuseia_missal: form.manuseia_missal, manuseia_turibulo: form.manuseia_turibulo
+            acessos: form.acessos, manuseia_missal: form.manuseia_missal, manuseia_turibulo: form.manuseia_turibulo,
+            disponivel_inicio: form.disponivel_inicio, disponivel_fim: form.disponivel_fim
         }
 
         // --- MODO EDIÇÃO ---
         if (editingId) {
-            // 1. Busca o estado ATUAL do banco (ou do state) para saber quem era o ex-parceiro
             const usuarioAntigo = acolitos.find(a => a.id === editingId)
             const antigoParceiroId = usuarioAntigo?.parceiro_id
 
-            // 2. Atualiza o usuário atual (Breno aponta para Leticia)
             const { error } = await supabase.from('acolitos').update(payload).eq('id', editingId)
             if (error) throw error
 
-            // 3. RECIPROCIDADE FORÇADA
-            // Se escolheu alguém (Leticia), força ela a apontar para o Breno.
-            // Removemos o "if changed" para garantir que correções sejam feitas mesmo se o dropdown não mudou.
             if (novoParceiroId) {
                 await supabase.from('acolitos').update({ parceiro_id: editingId }).eq('id', novoParceiroId)
             }
 
-            // 4. LIMPEZA DE EX
-            // Se tinha um parceiro antigo e ele é diferente do novo (ou agora é null),
-            // remove o vínculo do antigo parceiro.
             if (antigoParceiroId && antigoParceiroId !== novoParceiroId) {
                 await supabase.from('acolitos').update({ parceiro_id: null }).eq('id', antigoParceiroId)
             }
@@ -217,11 +214,9 @@ export default function AcolitosPage() {
                 if (exists) throw new Error('Usuário já existe.')
             }
             
-            // Insere e retorna os dados para pegar o ID gerado
             const { data: insertedData, error } = await supabase.from('acolitos').insert([{ ...payload, ativo: true }]).select().single()
             if (error) throw error
 
-            // Se criou já com dupla, atualiza a dupla para apontar para o novo acólito
             if (insertedData && novoParceiroId) {
                 await supabase.from('acolitos').update({ parceiro_id: insertedData.id }).eq('id', novoParceiroId)
             }
@@ -229,12 +224,11 @@ export default function AcolitosPage() {
 
         setIsFormOpen(false)
         fetchAcolitos()
-        triggerAlert('Sucesso', 'Dados e vínculos de dupla atualizados.', 'success')
+        triggerAlert('Sucesso', 'Dados atualizados com sucesso.', 'success')
 
     } catch (error: any) { triggerAlert('Erro ao Salvar', error.message, 'error') }
   }
 
-  // --- Ações Rápidas do Card ---
   async function toggleStatus(e: any, id: number, statusAtual: boolean) {
     e.stopPropagation(); 
     const novos = acolitos.map(a => a.id === id ? { ...a, ativo: !statusAtual } : a); 
@@ -244,22 +238,17 @@ export default function AcolitosPage() {
 
   async function handleQuickToggle(e: any, id: number, field: string, currentValue: boolean) {
       e.stopPropagation();
-      // VERIFICAÇÃO DE PERMISSÃO RIGOROSA
       if(userRole !== 'admin' && userRole !== 'diretoria') {
           return triggerAlert('Acesso Negado', 'Apenas Coordenação altera funções litúrgicas.', 'warning');
       }
-
-      // Atualização Otimista
       const novos = acolitos.map(a => a.id === id ? { ...a, [field]: !currentValue } : a);
       setAcolitos(novos);
-
       try {
-          // Atualiza no banco
           const { error } = await supabase.from('acolitos').update({ [field]: !currentValue }).eq('id', id);
           if (error) throw error;
       } catch (err) {
           triggerAlert('Erro', 'Falha ao atualizar atributo.', 'error');
-          fetchAcolitos(); // Reverte em caso de erro
+          fetchAcolitos(); 
       }
   }
 
@@ -270,7 +259,6 @@ export default function AcolitosPage() {
     })
   }
 
-  // Filtro de busca
   const filteredAcolitos = acolitos.filter(a => 
       (a.nome + ' ' + a.sobrenome).toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -323,8 +311,9 @@ export default function AcolitosPage() {
                     <div><label className="text-xs font-bold text-gray-500 uppercase">Aniversário (DD/MM)</label><input type="text" value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
                  </div>
 
-                 <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-3">
+                 <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-4">
                     <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1"><Flame size={12}/> Liturgia & Disponibilidade</span>
+                    
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-orange-500/50 transition">
                             <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="accent-orange-500 scale-125"/>
@@ -338,6 +327,18 @@ export default function AcolitosPage() {
                             <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="accent-blue-500 scale-125"/>
                             <span className="text-sm">Só Fim de Semana</span>
                         </label>
+                    </div>
+
+                    {/* --- NOVA SEÇÃO DE RESTRIÇÃO POR HORA --- */}
+                    <div className="grid grid-cols-2 gap-4 border-t border-zinc-800 pt-3">
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Clock size={10}/> Disponível a partir de</label>
+                            <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Clock size={10}/> Disponível até</label>
+                            <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
+                        </div>
                     </div>
                  </div>
 
@@ -362,7 +363,7 @@ export default function AcolitosPage() {
 
                  {userRole === 'admin' && (
                      <div className="space-y-2">
-                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Acessos Específicos</span>
+                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={10}/> Acessos Específicos</span>
                         <div className="flex flex-wrap gap-2">
                             {MODULES.map(mod => (
                                 <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${form.acessos.includes(mod.id) ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}>
@@ -406,10 +407,7 @@ export default function AcolitosPage() {
       <main className="pt-24 pb-10 px-4 md:px-8 max-w-[1600px] mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-start">
             
-            {/* COLUNA ESQUERDA: Controles e Cards */}
             <div className="space-y-6">
-                
-                {/* Toolbar */}
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-zinc-900 p-2 rounded-xl border border-zinc-800">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-3 top-2.5 text-zinc-500" size={16}/>
@@ -426,7 +424,6 @@ export default function AcolitosPage() {
                     </button>
                 </div>
 
-                {/* Grid de Cards Compactos */}
                 {loading ? (
                     <div className="text-center py-20 text-zinc-500 animate-pulse">Carregando equipe...</div>
                 ) : filteredAcolitos.length === 0 ? (
@@ -438,16 +435,13 @@ export default function AcolitosPage() {
                                  className={`group relative bg-zinc-900 hover:bg-zinc-800/80 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
                                  ${!acolito.ativo ? 'border-zinc-800 opacity-60 grayscale' : 'border-zinc-800 hover:border-blue-500/30'}`}>
                                 
-                                {/* --- CONTEÚDO PRINCIPAL (Com padding inferior extra para não cortar texto) --- */}
                                 <div className="p-3 pb-12"> 
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-3">
-                                            {/* Avatar */}
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-inner ${acolito.ativo ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white' : 'bg-zinc-700 text-zinc-400'}`}>
                                                 {acolito.nome?.substring(0,2).toUpperCase()}
                                             </div>
                                             
-                                            {/* Nome e Cargo */}
                                             <div>
                                                 <h3 className="font-bold text-white text-sm leading-tight group-hover:text-blue-400 transition-colors">
                                                     {acolito.nome} {acolito.sobrenome}
@@ -459,7 +453,6 @@ export default function AcolitosPage() {
                                             </div>
                                         </div>
                                         
-                                        {/* Botões de Canto (Check/Lixeira) */}
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
                                             <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} className={`p-1.5 rounded-md transition ${acolito.ativo ? 'hover:bg-green-500/20 text-green-500' : 'hover:bg-zinc-700 text-zinc-500'}`}>
                                                 {acolito.ativo ? <Check size={16}/> : <XCircle size={16}/>}
@@ -473,7 +466,6 @@ export default function AcolitosPage() {
                                     </div>
                                 </div>
 
-                                {/* --- RODAPÉ: STATUS (Visível quando NÃO está com mouse em cima) --- */}
                                 <div className="absolute bottom-0 left-0 right-0 px-3 py-2 border-t border-zinc-800/50 flex items-center gap-2 transition-transform duration-300 group-hover:translate-y-full">
                                      {(acolito.apenas_fim_de_semana || acolito.manuseia_missal || acolito.manuseia_turibulo || acolito.parceiro_id) ? (
                                         <>
@@ -487,34 +479,16 @@ export default function AcolitosPage() {
                                      )}
                                 </div>
 
-                                {/* --- MENU DESLIZANTE (Visível APENAS no Hover) --- */}
                                 <div className="absolute bottom-0 left-0 right-0 bg-zinc-950 border-t border-blue-500/30 h-[42px] flex items-center justify-around translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-10 shadow-2xl">
-                                    
-                                    <button 
-                                        onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)}
-                                        title={acolito.apenas_fim_de_semana ? "Disponível apenas FDS" : "Disponível Semana toda"}
-                                        className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.apenas_fim_de_semana ? 'text-yellow-400' : 'text-zinc-600 hover:text-zinc-300'}`}
-                                    >
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title={acolito.apenas_fim_de_semana ? "Disponível apenas FDS" : "Disponível Semana toda"} className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.apenas_fim_de_semana ? 'text-yellow-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
                                         <CalendarClock size={16} />
                                     </button>
-
                                     <div className="w-[1px] h-4 bg-zinc-800"></div>
-
-                                    <button 
-                                        onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)}
-                                        title="Missal"
-                                        className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_missal ? 'text-blue-400' : 'text-zinc-600 hover:text-zinc-300'}`}
-                                    >
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_missal ? 'text-blue-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
                                         <BookOpen size={16} />
                                     </button>
-
                                     <div className="w-[1px] h-4 bg-zinc-800"></div>
-
-                                    <button 
-                                        onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)}
-                                        title="Turíbulo"
-                                        className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_turibulo ? 'text-orange-400' : 'text-zinc-600 hover:text-zinc-300'}`}
-                                    >
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_turibulo ? 'text-orange-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
                                         <Flame size={16} />
                                     </button>
                                 </div>
@@ -524,7 +498,6 @@ export default function AcolitosPage() {
                 )}
             </div>
 
-            {/* COLUNA DIREITA: Aniversariantes */}
             <aside className="hidden lg:block sticky top-24 space-y-4">
                 <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden shadow-lg">
                     <div className="p-3 bg-zinc-950 border-b border-zinc-800 flex items-center gap-2">
