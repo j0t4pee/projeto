@@ -334,7 +334,7 @@ export default function LoginPage() {
                   <div className="w-full border-t border-zinc-800"></div>
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-zinc-900 px-2 text-zinc-500">Visitante?</span>
+                  <span className="bg-zinc-900 px-2 text-zinc-500">ACESSO RÁPIDO</span>
               </div>
           </div>
 
