@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Save, Trash2, User, CheckCircle2, XCircle, Edit2, X, 
   Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, Settings, 
-  BookOpen, Flame, Plus, PartyPopper, Search, Check, Shield, Clock, LockKeyhole
+  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole
 } from 'lucide-react'
 
 // --- Tipos e Interfaces ---
@@ -48,11 +48,10 @@ export default function AcolitosPage() {
     data_nascimento: '', perfil: 'padrao', senha: '123', genero: 'M',
     apenas_fim_de_semana: false, parceiro_id: '', acessos: [] as string[],
     manuseia_missal: false, manuseia_turibulo: false,
-    disponivel_inicio: '00:00', // NOVO: Hora de inicio
-    disponivel_fim: '23:59'     // NOVO: Hora de fim
+    disponivel_inicio: '00:00',
+    disponivel_fim: '23:59'
   })
 
-  // --- Efeitos Iniciais ---
   useEffect(() => {
     setTheme('dark')
     const authData = localStorage.getItem('auth_token')
@@ -61,19 +60,10 @@ export default function AcolitosPage() {
     try {
         const user = JSON.parse(authData)
         setUserRole(user.perfil)
-        const hasTeamAccess = user.perfil === 'admin' || (user.acessos && user.acessos.includes('equipe'))
-        
-        if (!hasTeamAccess) {
-            triggerAlert("Acesso Negado", "Você não tem permissão para gerenciar a equipe.", "error")
-            router.push('/')
-            return
-        }
     } catch (e) { router.push('/login') }
-
     fetchAcolitos()
   }, [])
 
-  // --- Funções Auxiliares ---
   const triggerAlert = (title: string, message: string, type: 'error' | 'success' | 'warning') => {
       setCustomAlert({ isOpen: true, title, message, type })
   }
@@ -92,33 +82,48 @@ export default function AcolitosPage() {
     finally { setLoading(false) }
   }
 
-  // --- Lógica de Datas e Aniversários ---
-  const today = new Date()
-  const currentDay = today.getDate()
-  const currentMonth = today.getMonth() + 1
+  // --- Lógica de Aniversários OTIMIZADA ---
+  const getAniversariantesData = () => {
+    const today = new Date()
+    const currentDay = today.getDate()
+    const currentMonth = today.getMonth() + 1 // 1 a 12
+    const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    
+    // Cria um número comparável: Mês * 100 + Dia
+    // Ex: 5 de Fevereiro = 205. 25 de Dezembro = 1225.
+    const currentCompareValue = (currentMonth * 100) + currentDay;
 
-  const getAniversariantes = () => {
-    return acolitos
+    const todos = acolitos
       .filter(a => a.data_nascimento)
       .map(a => {
         const [ano, mes, dia] = a.data_nascimento.split('-')
         const diaNum = parseInt(dia)
         const mesNum = parseInt(mes)
+        
+        // Valor comparável do usuário
+        const userCompareValue = (mesNum * 100) + diaNum;
+
         return {
-           ...a,
-           dia: diaNum,
-           mes: mesNum,
-           diaDisplay: dia,
-           mesDisplay: mes,
-           isToday: diaNum === currentDay && mesNum === currentMonth
+          ...a,
+          dia: diaNum,
+          mes: mesNum,
+          mesNome: meses[mesNum - 1],
+          compareValue: userCompareValue,
+          isToday: userCompareValue === currentCompareValue,
         }
       })
-      .sort((a, b) => {
-        if (a.mes !== b.mes) return a.mes - b.mes
-        return a.dia - b.dia
-      })
+      // Ordena de Janeiro a Dezembro pelo valor comparável
+      .sort((a, b) => a.compareValue - b.compareValue)
+
+    return {
+      hoje: todos.filter(a => a.isToday),
+      // Filtra estritamente quem tem o valor maior que hoje
+      // Ex: Se hoje é 205 (5/fev), mostra apenas quem tem 206 pra cima
+      proximos: todos.filter(a => a.compareValue > currentCompareValue).slice(0, 5)
+    }
   }
-  const aniversariantesList = getAniversariantes()
+
+  const { hoje, proximos } = getAniversariantesData()
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/\D/g, '')
@@ -139,7 +144,6 @@ export default function AcolitosPage() {
       })
   }
 
-  // --- Ações de Formulário ---
   function openNewForm() {
       setEditingId(null)
       setForm({ 
@@ -159,19 +163,14 @@ export default function AcolitosPage() {
         formattedDate = `${dia}/${mes}`
     }
     setForm({
-        nome: acolito.nome || '', sobrenome: acolito.sobrenome || '', usuario: acolito.usuario || '', telefone: acolito.telefone || '',
-        rua: acolito.rua || '', numero: acolito.numero || '', bairro: acolito.bairro || '', complemento: acolito.complemento || '', 
-        data_nascimento: formattedDate, perfil: acolito.perfil || 'padrao', senha: acolito.senha || '123',
-        genero: acolito.genero || 'M', apenas_fim_de_semana: acolito.apenas_fim_de_semana || false,
-        parceiro_id: acolito.parceiro_id || '', acessos: acolito.acessos || [],
-        manuseia_missal: acolito.manuseia_missal || false, manuseia_turibulo: acolito.manuseia_turibulo || false,
-        disponivel_inicio: acolito.disponivel_inicio || '00:00',
-        disponivel_fim: acolito.disponivel_fim || '23:59'
+        ...acolito,
+        data_nascimento: formattedDate,
+        parceiro_id: acolito.parceiro_id || '',
+        acessos: acolito.acessos || []
     })
     setIsFormOpen(true)
   }
 
-  // --- FUNÇÃO DE SALVAR CORRIGIDA ---
   async function handleSave() {
     try {
         let dataNascDB = null
@@ -180,80 +179,45 @@ export default function AcolitosPage() {
             dataNascDB = `2000-${mes}-${dia}`
         }
         
-        const novoParceiroId = form.parceiro_id && form.parceiro_id !== '' ? parseInt(form.parceiro_id) : null
-        
         const payload = { 
-            nome: form.nome, sobrenome: form.sobrenome, usuario: form.usuario, telefone: form.telefone,
-            rua: form.rua, numero: form.numero, bairro: form.bairro, complemento: form.complemento,
-            data_nascimento: dataNascDB, perfil: form.perfil, genero: form.genero,
-            apenas_fim_de_semana: form.apenas_fim_de_semana, parceiro_id: novoParceiroId,
-            acessos: form.acessos, manuseia_missal: form.manuseia_missal, manuseia_turibulo: form.manuseia_turibulo,
-            disponivel_inicio: form.disponivel_inicio, disponivel_fim: form.disponivel_fim
+            ...form,
+            data_nascimento: dataNascDB,
+            parceiro_id: form.parceiro_id !== '' ? parseInt(form.parceiro_id as string) : null
         }
 
-        // --- MODO EDIÇÃO ---
         if (editingId) {
-            const usuarioAntigo = acolitos.find(a => a.id === editingId)
-            const antigoParceiroId = usuarioAntigo?.parceiro_id
-
             const { error } = await supabase.from('acolitos').update(payload).eq('id', editingId)
             if (error) throw error
-
-            if (novoParceiroId) {
-                await supabase.from('acolitos').update({ parceiro_id: editingId }).eq('id', novoParceiroId)
-            }
-
-            if (antigoParceiroId && antigoParceiroId !== novoParceiroId) {
-                await supabase.from('acolitos').update({ parceiro_id: null }).eq('id', antigoParceiroId)
-            }
-
-        // --- MODO CRIAÇÃO ---
         } else {
-            if (form.usuario) {
-                const { data: exists } = await supabase.from('acolitos').select('id').eq('usuario', form.usuario).single()
-                if (exists) throw new Error('Usuário já existe.')
-            }
-            
-            const { data: insertedData, error } = await supabase.from('acolitos').insert([{ ...payload, ativo: true }]).select().single()
+            const { error } = await supabase.from('acolitos').insert([{ ...payload, ativo: true }])
             if (error) throw error
-
-            if (insertedData && novoParceiroId) {
-                await supabase.from('acolitos').update({ parceiro_id: insertedData.id }).eq('id', novoParceiroId)
-            }
         }
 
         setIsFormOpen(false)
         fetchAcolitos()
-        triggerAlert('Sucesso', 'Dados atualizados com sucesso.', 'success')
-
-    } catch (error: any) { triggerAlert('Erro ao Salvar', error.message, 'error') }
+        triggerAlert('Sucesso', 'Dados atualizados.', 'success')
+    } catch (error: any) { triggerAlert('Erro', error.message, 'error') }
   }
 
   async function toggleStatus(e: any, id: number, statusAtual: boolean) {
     e.stopPropagation(); 
-    const novos = acolitos.map(a => a.id === id ? { ...a, ativo: !statusAtual } : a); 
-    setAcolitos(novos)
-    try { await supabase.from('acolitos').update({ ativo: !statusAtual }).eq('id', id) } catch { triggerAlert('Erro', 'Falha no status.', 'error') }
+    try { 
+        await supabase.from('acolitos').update({ ativo: !statusAtual }).eq('id', id)
+        fetchAcolitos()
+    } catch { triggerAlert('Erro', 'Falha no status.', 'error') }
   }
 
   async function handleQuickToggle(e: any, id: number, field: string, currentValue: boolean) {
       e.stopPropagation();
-      if(userRole !== 'admin' && userRole !== 'diretoria') {
-          return triggerAlert('Acesso Negado', 'Apenas Coordenação altera funções litúrgicas.', 'warning');
-      }
-      const novos = acolitos.map(a => a.id === id ? { ...a, [field]: !currentValue } : a);
-      setAcolitos(novos);
+      if(userRole !== 'admin' && userRole !== 'diretoria') return;
       try {
-          const { error } = await supabase.from('acolitos').update({ [field]: !currentValue }).eq('id', id);
-          if (error) throw error;
-      } catch (err) {
-          triggerAlert('Erro', 'Falha ao atualizar atributo.', 'error');
-          fetchAcolitos(); 
-      }
+          await supabase.from('acolitos').update({ [field]: !currentValue }).eq('id', id);
+          fetchAcolitos();
+      } catch (err) { triggerAlert('Erro', 'Falha ao atualizar.', 'error'); }
   }
 
   async function handleDelete(e: any, id: number) {
-    e.stopPropagation(); if (userRole !== 'admin') return triggerAlert('Sem Permissão', 'Apenas Admin exclui.', 'error')
+    e.stopPropagation();
     triggerConfirm('Excluir?', 'Irreversível.', async () => {
         try { await supabase.from('acolitos').delete().eq('id', id); fetchAcolitos(); closeAlert() } catch (e: any) { triggerAlert('Erro', e.message, 'error') }
     })
@@ -266,231 +230,196 @@ export default function AcolitosPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-blue-500/30">
       
-      {/* --- ALERT COMPONENT --- */}
+      {/* Alert Component */}
       {customAlert.isOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-500/20 text-red-500' : customAlert.type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-yellow-500/20 text-yellow-500'}`}>
-                      {customAlert.type === 'error' && <AlertCircle size={28}/>} {customAlert.type === 'success' && <CheckCircle2 size={28}/>} {customAlert.type === 'warning' && <AlertTriangle size={28}/>}
+          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm text-center space-y-4">
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
+                      {customAlert.type === 'error' ? <AlertCircle size={28}/> : <CheckCircle2 size={28}/>}
                   </div>
-                  <div><h3 className="text-lg font-bold text-white mb-1">{customAlert.title}</h3><p className="text-sm text-zinc-400">{customAlert.message}</p></div>
-                  <div className="flex gap-3 pt-2">
-                      {!customAlert.onConfirm ? <button onClick={closeAlert} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition">Entendi</button> : 
-                      <><button onClick={closeAlert} className="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-400 font-bold py-3 rounded-xl hover:bg-zinc-800 transition">Cancelar</button><button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition">Confirmar</button></>}
-                  </div>
+                  <h3 className="text-lg font-bold text-white">{customAlert.title}</h3>
+                  <p className="text-sm text-zinc-400">{customAlert.message}</p>
+                  <button onClick={closeAlert} className="w-full bg-zinc-800 py-3 rounded-xl transition">Entendi</button>
               </div>
           </div>
       )}
 
-      {/* --- MODAL DE CADASTRO/EDIÇÃO --- */}
+      {/* --- MODAL DE CADASTRO/EDIÇÃO (RESTAURADO) --- */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col">
               <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-900 z-10">
-                 <h2 className="text-xl font-bold flex items-center gap-2">
-                    {editingId ? <><Edit2 size={20} className="text-yellow-500"/> Editar Acólito</> : <><User size={20} className="text-blue-500"/> Novo Acólito</>}
-                 </h2>
-                 <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full transition"><X size={20}/></button>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    {editingId ? <Edit2 size={20} className="text-yellow-500"/> : <User size={20} className="text-blue-500"/>} 
+                    {editingId ? 'Editar Membro' : 'Novo Membro'}
+                  </h2>
+                  <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full transition"><X size={20}/></button>
               </div>
               
               <div className="p-6 space-y-6">
-                 {/* Inputs do Formulário */}
-                 <div className="grid grid-cols-2 gap-4">
-                     <div className="col-span-1"><label className="text-xs font-bold text-gray-500 uppercase">Nome</label><input type="text" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                     <div className="col-span-1"><label className="text-xs font-bold text-gray-500 uppercase">Sobrenome</label><input type="text" value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                 </div>
+                  {/* Nome e Sobrenome */}
+                  <div className="grid grid-cols-2 gap-4">
+                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Nome</label><input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Sobrenome</label><input value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Gênero, Usuário e Niver */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase">Gênero</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Gênero</label>
                         <select value={form.genero} onChange={e => setForm({...form, genero: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1 text-white">
                             <option value="M">Masculino</option><option value="F">Feminino</option>
                         </select>
                     </div>
-                    <div><label className="text-xs font-bold text-gray-500 uppercase">Usuário</label><input type="text" value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                    <div><label className="text-xs font-bold text-gray-500 uppercase">Aniversário (DD/MM)</label><input type="text" value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                 </div>
+                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Usuário</label><input value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Nascimento (DD/MM)</label><input value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                  </div>
 
-                 <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-4">
+                  {/* Liturgia e Disponibilidade */}
+                  <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-4">
                     <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1"><Flame size={12}/> Liturgia & Disponibilidade</span>
-                    
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-orange-500/50 transition">
                             <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="accent-orange-500 scale-125"/>
-                            <span className="text-sm">Manuseia Missal</span>
+                            <span className="text-sm">Missal</span>
                         </label>
                         <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-orange-500/50 transition">
                             <input type="checkbox" checked={form.manuseia_turibulo} onChange={e => setForm({...form, manuseia_turibulo: e.target.checked})} className="accent-orange-500 scale-125"/>
-                            <span className="text-sm">Manuseia Turíbulo</span>
+                            <span className="text-sm">Turíbulo</span>
                         </label>
                         <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-blue-500/50 transition">
                             <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="accent-blue-500 scale-125"/>
-                            <span className="text-sm">Só Fim de Semana</span>
+                            <span className="text-sm">Só FDS</span>
                         </label>
                     </div>
-
-                    {/* --- NOVA SEÇÃO DE RESTRIÇÃO POR HORA --- */}
+                    {/* Horários */}
                     <div className="grid grid-cols-2 gap-4 border-t border-zinc-800 pt-3">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Clock size={10}/> Disponível a partir de</label>
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Clock size={10}/> Início</label>
                             <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Clock size={10}/> Disponível até</label>
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Clock size={10}/> Fim</label>
                             <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
                         </div>
                     </div>
-                 </div>
+                  </div>
 
-                 <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-3">
+                  {/* Configurações de Perfil e Parceiro */}
+                  <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-3">
                     <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center gap-1"><Settings size={12}/> Configurações</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Perfil de Acesso</label>
-                             <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} disabled={userRole !== 'admin'} className={`w-full p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm ${userRole !== 'admin' ? 'opacity-50' : ''}`}>
+                             <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Perfil de Acesso</label>
+                             <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} className="w-full p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
                                 <option value="padrao">Acólito</option><option value="diretoria">Diretoria</option><option value="admin">Admin</option>
                              </select>
                         </div>
                         <div>
-                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Dupla / Parceiro</label>
+                             <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Dupla / Parceiro</label>
                              <select value={form.parceiro_id} onChange={e => setForm({...form, parceiro_id: e.target.value})} className="w-full p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
                                 <option value="">Nenhum</option>
                                 {acolitos.filter(a => a.id !== editingId).map(a => <option key={a.id} value={a.id}>{a.nome} {a.sobrenome}</option>)}
                              </select>
                         </div>
                     </div>
-                 </div>
+                  </div>
 
-                 {userRole === 'admin' && (
-                     <div className="space-y-2">
-                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={10}/> Acessos Específicos</span>
+                  {/* Acessos Específicos (Admin) */}
+                  {userRole === 'admin' && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={10}/> Módulos Liberados</span>
                         <div className="flex flex-wrap gap-2">
                             {MODULES.map(mod => (
-                                <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${form.acessos.includes(mod.id) ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}>
+                                <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition ${form.acessos.includes(mod.id) ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}>
                                     {mod.label}
                                 </button>
                             ))}
                         </div>
-                     </div>
-                 )}
+                      </div>
+                  )}
               </div>
+
               <div className="p-6 border-t border-zinc-800 bg-zinc-900 sticky bottom-0 z-10">
-                  <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-2">
-                      <Save size={20} /> {editingId ? 'Salvar Alterações' : 'Cadastrar Acólito'}
+                  <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition flex items-center justify-center gap-2">
+                      <Save size={20} /> {editingId ? 'Salvar Alterações' : 'Cadastrar Membro'}
                   </button>
               </div>
            </div>
         </div>
       )}
 
-      {/* --- HEADER --- */}
+      {/* Header */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 flex items-center justify-between px-4 md:px-8 z-40">
         <div className="flex items-center gap-4">
-            <Link href="/" className="w-10 h-10 flex items-center justify-center hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition"><ArrowLeft size={20}/></Link>
+            <Link href="/" className="w-10 h-10 flex items-center justify-center hover:bg-zinc-800 rounded-full text-zinc-400 transition"><ArrowLeft size={20}/></Link>
             <div>
                 <h1 className="text-lg font-bold text-white leading-none">Gestão de Equipe</h1>
-                <span className="text-xs text-zinc-500 font-medium">Acólitos & Cerimoniários</span>
+                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Acólitos & Cerimoniários</span>
             </div>
         </div>
         <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-xs font-bold text-zinc-400">{acolitos.length} Membros</span>
-             </div>
-             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center font-bold shadow-lg shadow-blue-900/20 text-xs">
-                 {userRole === 'admin' ? 'ADM' : 'DIR'}
+             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-400">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {acolitos.length} Membros
              </div>
         </div>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* Conteúdo Principal */}
       <main className="pt-24 pb-10 px-4 md:px-8 max-w-[1600px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
             
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-zinc-900 p-2 rounded-xl border border-zinc-800">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-3 top-2.5 text-zinc-500" size={16}/>
                         <input 
-                            type="text" 
                             placeholder="Buscar por nome..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-zinc-950 text-white text-sm pl-9 pr-4 py-2 rounded-lg border border-zinc-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                            className="w-full bg-zinc-950 text-white text-sm pl-9 pr-4 py-2 rounded-lg border border-zinc-800 outline-none focus:border-blue-500 transition"
                         />
                     </div>
-                    <button onClick={openNewForm} className="w-full md:w-auto px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-blue-900/20 whitespace-nowrap">
+                    <button onClick={openNewForm} className="w-full md:w-auto px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition active:scale-95 shadow-lg shadow-blue-900/20">
                         <Plus size={18}/> Novo Acólito
                     </button>
                 </div>
 
                 {loading ? (
                     <div className="text-center py-20 text-zinc-500 animate-pulse">Carregando equipe...</div>
-                ) : filteredAcolitos.length === 0 ? (
-                    <div className="text-center py-20 border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-500">Nenhum acólito encontrado.</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                         {filteredAcolitos.map((acolito) => (
                             <div key={acolito.id} onClick={() => handleEdit(acolito)} 
                                  className={`group relative bg-zinc-900 hover:bg-zinc-800/80 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
-                                 ${!acolito.ativo ? 'border-zinc-800 opacity-60 grayscale' : 'border-zinc-800 hover:border-blue-500/30'}`}>
+                                 ${!acolito.ativo ? 'opacity-60 grayscale' : 'border-zinc-800 hover:border-blue-500/30'}`}>
                                 
-                                <div className="p-3 pb-12"> 
+                                <div className="p-4 pb-12"> 
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-inner ${acolito.ativo ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white' : 'bg-zinc-700 text-zinc-400'}`}>
+                                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-900/20">
                                                 {acolito.nome?.substring(0,2).toUpperCase()}
                                             </div>
-                                            
                                             <div>
-                                                <h3 className="font-bold text-white text-sm leading-tight group-hover:text-blue-400 transition-colors">
-                                                    {acolito.nome} {acolito.sobrenome}
-                                                </h3>
+                                                <h3 className="font-bold text-white text-sm leading-tight group-hover:text-blue-400 transition-colors">{acolito.nome} {acolito.sobrenome}</h3>
                                                 <div className="flex items-center gap-1 mt-0.5">
-                                                    {acolito.perfil !== 'padrao' && <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1 rounded uppercase flex items-center gap-0.5"><Shield size={8}/> {acolito.perfil}</span>}
-                                                    {acolito.parceiro_id && <span className="text-[9px] font-bold text-pink-400 bg-pink-500/10 px-1 rounded flex items-center gap-0.5"><Heart size={8}/> Dupla</span>}
+                                                    {acolito.perfil !== 'padrao' && <span className="text-[8px] font-black text-purple-400 bg-purple-500/10 px-1 rounded uppercase flex items-center gap-0.5"><Shield size={8}/> {acolito.perfil}</span>}
+                                                    {acolito.parceiro_id && <span className="text-[8px] font-black text-pink-400 bg-pink-500/10 px-1 rounded flex items-center gap-0.5"><Heart size={8}/> Dupla</span>}
                                                 </div>
                                             </div>
                                         </div>
-                                        
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                            <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} className={`p-1.5 rounded-md transition ${acolito.ativo ? 'hover:bg-green-500/20 text-green-500' : 'hover:bg-zinc-700 text-zinc-500'}`}>
-                                                {acolito.ativo ? <Check size={16}/> : <XCircle size={16}/>}
-                                            </button>
-                                            {userRole === 'admin' && (
-                                                <button onClick={(e) => handleDelete(e, acolito.id)} className="p-1.5 rounded-md hover:bg-red-500/20 text-zinc-600 hover:text-red-500 transition">
-                                                    <Trash2 size={16}/>
-                                                </button>
-                                            )}
-                                        </div>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(e, acolito.id); }} className="p-2 text-zinc-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+                                            <Trash2 size={16}/>
+                                        </button>
                                     </div>
                                 </div>
 
-                                <div className="absolute bottom-0 left-0 right-0 px-3 py-2 border-t border-zinc-800/50 flex items-center gap-2 transition-transform duration-300 group-hover:translate-y-full">
-                                     {(acolito.apenas_fim_de_semana || acolito.manuseia_missal || acolito.manuseia_turibulo || acolito.parceiro_id) ? (
-                                        <>
-                                            {acolito.apenas_fim_de_semana && <div title="Só FDS" className="text-yellow-500 bg-yellow-500/10 p-1 rounded"><CalendarClock size={14} /></div>}
-                                            {acolito.manuseia_missal && <div title="Missal" className="text-blue-400 bg-blue-500/10 p-1 rounded"><BookOpen size={14} /></div>}
-                                            {acolito.manuseia_turibulo && <div title="Turíbulo" className="text-orange-400 bg-orange-500/10 p-1 rounded"><Flame size={14} /></div>}
-                                            {acolito.parceiro_id && <div title="Dupla" className="ml-auto text-pink-400 bg-pink-500/10 p-1 rounded"><Heart size={14} /></div>}
-                                        </>
-                                     ) : (
-                                        <span className="text-[10px] text-zinc-600 italic">Sem restrições/funções</span>
-                                     )}
-                                </div>
-
-                                <div className="absolute bottom-0 left-0 right-0 bg-zinc-950 border-t border-blue-500/30 h-[42px] flex items-center justify-around translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-10 shadow-2xl">
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title={acolito.apenas_fim_de_semana ? "Disponível apenas FDS" : "Disponível Semana toda"} className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.apenas_fim_de_semana ? 'text-yellow-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
-                                        <CalendarClock size={16} />
-                                    </button>
-                                    <div className="w-[1px] h-4 bg-zinc-800"></div>
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_missal ? 'text-blue-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
-                                        <BookOpen size={16} />
-                                    </button>
-                                    <div className="w-[1px] h-4 bg-zinc-800"></div>
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex items-center justify-center transition hover:bg-zinc-900 ${acolito.manuseia_turibulo ? 'text-orange-400' : 'text-zinc-600 hover:text-zinc-300'}`}>
-                                        <Flame size={16} />
-                                    </button>
+                                {/* Ações rápidas no hover */}
+                                <div className="absolute bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 h-10 flex items-center justify-around translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-10 shadow-2xl">
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title="FDS" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.apenas_fim_de_semana ? 'text-yellow-400' : 'text-zinc-600'}`}><CalendarClock size={16}/></button>
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.manuseia_missal ? 'text-blue-400' : 'text-zinc-600'}`}><BookOpen size={16}/></button>
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.manuseia_turibulo ? 'text-orange-400' : 'text-zinc-600'}`}><Flame size={16}/></button>
+                                    <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} title="Status" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.ativo ? 'text-green-500' : 'text-red-500'}`}><CheckCircle2 size={16}/></button>
                                 </div>
                             </div>
                         ))}
@@ -498,35 +427,57 @@ export default function AcolitosPage() {
                 )}
             </div>
 
+            {/* Sidebar de Aniversariantes */}
             <aside className="hidden lg:block sticky top-24 space-y-4">
-                <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden shadow-lg">
-                    <div className="p-3 bg-zinc-950 border-b border-zinc-800 flex items-center gap-2">
-                        <Cake className="text-pink-500" size={16} />
-                        <h3 className="font-bold text-xs uppercase tracking-wide text-zinc-400">Aniversariantes</h3>
+                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl">
+                    <div className="p-4 bg-zinc-950/50 border-b border-zinc-800 flex items-center gap-2">
+                        <Cake size={16} className="text-pink-500" />
+                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-zinc-500">Aniversariantes</h3>
                     </div>
-                    
-                    <div className="max-h-[70vh] overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                        {aniversariantesList.length === 0 ? (
-                            <p className="text-center text-xs text-zinc-600 py-4">Nenhum registro.</p>
-                        ) : (
-                            aniversariantesList.map((aniv) => (
-                                <div key={aniv.id} className={`flex items-center gap-3 p-2 rounded-lg transition ${aniv.isToday ? 'bg-pink-900/10 border border-pink-500/30' : 'hover:bg-zinc-800 border border-transparent'}`}>
-                                    <div className={`flex flex-col items-center justify-center w-8 h-8 rounded border ${aniv.isToday ? 'bg-pink-500 text-white border-pink-400' : 'bg-zinc-950 text-zinc-500 border-zinc-800'}`}>
-                                        <span className="text-xs font-bold leading-none">{aniv.diaDisplay}</span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`text-xs font-bold truncate ${aniv.isToday ? 'text-white' : 'text-zinc-300'}`}>
-                                            {aniv.nome} {aniv.sobrenome}
-                                        </p>
-                                        {aniv.isToday && (
+
+                    <div className="p-3 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                        {/* Hoje */}
+                        {hoje.length > 0 && (
+                            <div className="space-y-2">
+                                <span className="text-[10px] font-bold text-pink-500 uppercase ml-1">Aniversário do Dia</span>
+                                {hoje.map(aniv => (
+                                    <div key={aniv.id} className="bg-gradient-to-br from-pink-500/20 to-violet-500/10 border border-pink-500/40 p-3 rounded-xl flex items-center gap-3">
+                                        <div className="flex flex-col items-center justify-center bg-pink-500 text-white w-10 h-10 rounded-lg shrink-0 shadow-lg shadow-pink-500/20">
+                                            <span className="text-sm font-black leading-none">{aniv.dia}</span>
+                                            <span className="text-[8px] uppercase font-bold">{aniv.mesNome}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-white truncate">{aniv.nome}</p>
                                             <span className="text-[10px] text-pink-400 flex items-center gap-1 animate-pulse">
-                                                <PartyPopper size={10}/> Hoje!
+                                                <PartyPopper size={10}/> Parabéns!
                                             </span>
-                                        )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))
+                                ))}
+                            </div>
                         )}
+
+                        {/* Próximos */}
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Próximos</span>
+                            {proximos.length === 0 && hoje.length === 0 ? (
+                                <p className="text-xs text-zinc-600 p-4 text-center italic">Nenhum aniversário próximo.</p>
+                            ) : (
+                                proximos.map(aniv => (
+                                    <div key={aniv.id} className="flex items-center gap-3 p-2 hover:bg-zinc-800/50 rounded-xl transition-colors group">
+                                        <div className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-800 text-zinc-400 w-9 h-9 rounded-lg shrink-0 group-hover:border-zinc-600 transition-colors">
+                                            <span className="text-xs font-bold leading-none">{aniv.dia}</span>
+                                            <span className="text-[7px] uppercase font-bold">{aniv.mesNome}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-semibold text-zinc-300 group-hover:text-white truncate transition-colors">
+                                                {aniv.nome} {aniv.sobrenome}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
             </aside>

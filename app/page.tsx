@@ -9,15 +9,15 @@ import {
   Filter, Eye, ChevronDown, Calendar as CalendarIcon, CalendarOff, 
   Wand2, ChevronLeft, ChevronRight, Settings, ClipboardList, 
   CheckCircle2, AlertCircle, Info, Download, AlertTriangle, 
-  Search, DollarSign, Flame, BookOpen 
+  Search, DollarSign, Flame, BookOpen, FolderClock // Novo ícone importado
 } from 'lucide-react'
 
-const APP_VERSION = "v3.85.2-ui-fix" 
+const APP_VERSION = "v3.87.0-ui-folder" 
 
 const RELEASE_NOTES = [
-    "Sistema: Configurações movidas para página dedicada.",
-    "Gerador: Nova opção 'Apenas 1 acólito (Quarta/Sexta)'.",
-    "UI: Corrigida cor dos nomes nos cards de missa."
+    "UI: Missas passadas agora têm visual de 'Arquivo/Folder'.",
+    "Gerador: Algoritmo de justiça baseado em histórico de 3 meses.",
+    "PDF: Seleção de mês específico para impressão."
 ]
 
 interface NewEscala {
@@ -45,6 +45,14 @@ const PLACE_COLORS: { [key: string]: string } = {
     "Nsa. Sra. da Abadia": "border-l-orange-600",
     "Santa Clara": "border-l-violet-600"
 }
+// Cores desbotadas para eventos passados (Folder Style)
+const PAST_PLACE_COLORS: { [key: string]: string } = {
+    "São José Operário": "border-l-blue-900/50",
+    "Capela Nsa. Sra. das Graças": "border-l-emerald-900/50",
+    "Nsa. Sra. da Abadia": "border-l-orange-900/50",
+    "Santa Clara": "border-l-violet-900/50"
+}
+
 const ROLE_BADGE_STYLE = "border-zinc-700 text-zinc-300 bg-zinc-800/80"
 
 const VERSICULOS = [
@@ -133,6 +141,7 @@ export default function Home() {
   const [isAutoModalOpen, setIsAutoModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
   
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'info', title: '', message: '', isConfirmDialog: false
@@ -158,6 +167,8 @@ export default function Home() {
   const [editingEventId, setEditingEventId] = useState<number | null>(null)
   
   const [autoGenMonth, setAutoGenMonth] = useState(new Date().toISOString().slice(0, 7)) 
+  const [pdfTargetMonth, setPdfTargetMonth] = useState(new Date().toISOString().slice(0, 7))
+
   const [isGenerating, setIsGenerating] = useState(false)
   const [clearBeforeGenerate, setClearBeforeGenerate] = useState(true)
   const [includeDay19, setIncludeDay19] = useState(true)
@@ -189,6 +200,7 @@ export default function Home() {
             if (customAlert.isOpen) { closeAlert(); return }
             setIsModalOpen(false); setIsAutoModalOpen(false); 
             setIsAboutModalOpen(false); setIsRulesModalOpen(false);
+            setIsPdfModalOpen(false);
         }
     }
     window.addEventListener('keydown', handleEsc)
@@ -313,6 +325,7 @@ export default function Home() {
     setIsGenerating(true)
 
     try {
+        // 1. Limpeza do Mês (se selecionado)
         if (clearBeforeGenerate) {
             const [year, month] = autoGenMonth.split('-').map(Number)
             const lastDay = new Date(year, month, 0).getDate()
@@ -320,36 +333,35 @@ export default function Home() {
         }
 
         const [year, month] = autoGenMonth.split('-').map(Number)
+        
+        // 2. BUSCAR REGRAS FIXAS DO BANCO (CORREÇÃO AQUI)
+        const { data: fixedRulesData } = await supabase.from('regras_fixas').select('*');
+        const fixedRules = fixedRulesData || []; 
 
-        // Nota: exclusionRules e fixedRules agora são gerenciados na página /configuracoes
-        // Para que o gerador funcione corretamente com as regras criadas lá, elas precisam vir do Banco de Dados.
-        // Como o fetchInitialData busca 'restricoes', a parte de indisponibilidade já funciona.
-        // A parte de Exclusão Global e Regras Fixas precisaria ser buscada de uma tabela específica no DB.
-        // Como estamos simulando a persistência visual na página de config, aqui usaremos arrays vazios para não quebrar.
         const excludedDays: number[] = [] 
-        const fixedRules: any[] = [] 
 
+        // 3. Inicializar mapa de uso com histórico
         const usageMap: { [key: string]: number } = {}
         dbAcolitos.forEach(a => usageMap[a.nome] = 0)
 
-        const historyStartDate = new Date(year, month - 3, 1).toISOString().split('T')[0];
+        const historyStartDate = new Date(year, month - 4, 1).toISOString().split('T')[0];
         const historyEndDate = `${year}-${String(month).padStart(2,'0')}-01`;
-        const recentHistory = rawEvents.filter(e => e.data >= historyStartDate && e.data < historyEndDate);
         
+        const recentHistory = rawEvents.filter(e => e.data >= historyStartDate && e.data < historyEndDate);
         recentHistory.forEach(evt => {
-             if (Array.isArray(evt.acolitos)) {
-                 evt.acolitos.forEach((ac:any) => {
-                     const dbAc = dbAcolitos.find(d => `${d.nome} ${d.sobrenome || ''}`.trim() === ac.nome)
-                     if(dbAc) {
-                        usageMap[dbAc.nome] = (usageMap[dbAc.nome] || 0) + 1;
-                     }
-                 })
-             }
+              if (Array.isArray(evt.acolitos)) {
+                  evt.acolitos.forEach((ac:any) => {
+                      const dbAc = dbAcolitos.find(d => `${d.nome} ${d.sobrenome || ''}`.trim() === ac.nome)
+                      if(dbAc) {
+                         usageMap[dbAc.nome] = (usageMap[dbAc.nome] || 0) + 1;
+                      }
+                  })
+              }
         });
 
         const getFullName = (ac: any) => `${ac.nome} ${ac.sobrenome || ''}`.trim()
 
-        const getTeam = (size: number, dateStr: string, dayNum: number, currentScheduledNames: Set<string>) => {
+        const getTeam = (targetSize: number, dateStr: string, dayNum: number, currentScheduledNames: Set<string>) => {
             const team: string[] = []
             const dateObj = new Date(dateStr + 'T12:00:00')
             const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6
@@ -358,70 +370,70 @@ export default function Home() {
                 const fullName = getFullName(ac)
                 
                 if (currentScheduledNames.has(fullName)) return false;
-
                 if (!ac.ativo) return false
                 if (team.includes(fullName)) return false
-                if (team.length === 3) {
-    team.pop() // Remove o Turíbulo se não houver um 4º (Naveta) para paridade
-}
                 
                 const hasRestriction = restrictions.some(r => {
                       const isSameName = r.acolito_nome === fullName; 
                       const rStart = r.data_inicio;
                       const rEnd = r.data_fim || r.data_inicio;
-                      const isDateOverlap = dateStr >= rStart && dateStr <= rEnd;
-                      return isSameName && isDateOverlap;
+                      return isSameName && (dateStr >= rStart && dateStr <= rEnd);
                 });
                 if (hasRestriction) return false;
 
                 if (ac.apenas_fim_de_semana && !isWeekend) return false
-                if (roleIndex === 2 && ac.genero === 'F') return false 
-
+                
                 if (roleIndex === 0 && !ac.manuseia_missal) return false
                 if (roleIndex === 2 && !ac.manuseia_turibulo) return false
+                if (roleIndex === 2 && ac.genero === 'F') return false 
 
                 return true
             }
 
-            const fixedForDay = fixedRules.filter(r => parseInt(r.day) === dayNum)
-            fixedForDay.forEach(rule => {
-                const acolito = dbAcolitos.find(a => {
-                    const fullName = `${a.nome} ${a.sobrenome || ''}`.trim();
-                    return fullName === rule.acolito;
-                })
+            // A. Processar Regras Fixas Primeiro (CORREÇÃO AQUI)
+            // Filtra as regras que batem com o dia atual
+            const fixedForDay = fixedRules.filter((r: any) => parseInt(r.day) === dayNum)
+            
+            fixedForDay.forEach((rule: any) => {
+                const acolito = dbAcolitos.find(a => getFullName(a) === rule.acolito)
                 
+                // Se o acólito existe e é elegível para a vaga atual
                 if (acolito && isEligible(acolito, team.length)) {
                     team.push(getFullName(acolito))
-                    usageMap[acolito.nome] = (usageMap[acolito.nome] || 0) + 10
-                    
-                    if (acolito.parceiro_id && team.length < size) {
-                        const partner = dbAcolitos.find(p => p.id === acolito.parceiro_id)
-                        if (partner && isEligible(partner, team.length)) {
-                            team.push(getFullName(partner))
-                            usageMap[partner.nome] = (usageMap[partner.nome] || 0) + 10
-                        }
-                    }
+                    // Penaliza muito no usageMap para garantir que ele não seja sorteado "extra" em outros dias sem querer
+                    usageMap[acolito.nome] = (usageMap[acolito.nome] || 0) + 50 
                 }
             })
 
+            // B. Sorteio Egalitário (Preenche o restante das vagas)
             let attempts = 0
-            while (team.length < size && attempts < 500) {
+            while (team.length < targetSize && attempts < 500) {
                 const currentRoleIdx = team.length
+                
                 const pool = dbAcolitos
                     .filter(a => {
                         if (!isEligible(a, currentRoleIdx)) return false
-                        if (a.parceiro_id && team.length + 1 >= size) return false 
+                        if (a.parceiro_id) {
+                            if (team.length + 1 >= targetSize) return false 
+                        }
                         return true
                     })
-                    .sort((a, b) => (usageMap[a.nome] || 0) - (usageMap[b.nome] || 0) || Math.random() - 0.5)
+                    .sort((a, b) => {
+                        const usageA = usageMap[a.nome] || 0
+                        const usageB = usageMap[b.nome] || 0
+                        return (usageA - usageB) || (Math.random() - 0.5)
+                    })
 
                 let selected = false;
+                
                 for (const candidate of pool) {
                     if (candidate.parceiro_id) {
                         const partner = dbAcolitos.find(p => p.id === candidate.parceiro_id)
+                        
                         if (partner && isEligible(partner, currentRoleIdx + 1)) {
                             team.push(getFullName(candidate))
                             team.push(getFullName(partner))
+                            
                             usageMap[candidate.nome] = (usageMap[candidate.nome] || 0) + 1
                             usageMap[partner.nome] = (usageMap[partner.nome] || 0) + 1
                             selected = true; break;
@@ -432,9 +444,15 @@ export default function Home() {
                         selected = true; break;
                     }
                 }
+                
                 if (!selected) break;
                 attempts++
             }
+
+            if (team.length === 3 && targetSize === 4) {
+                 team.pop(); 
+            }
+
             return team
         }
 
@@ -443,6 +461,7 @@ export default function Home() {
         const today = new Date(); today.setHours(0,0,0,0)
 
         for (let day = 1; day <= daysInMonth; day++) {
+            // ... (restante do loop de dias permanece igual)
             if (excludedDays.includes(day)) continue;
 
             const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -450,15 +469,12 @@ export default function Home() {
             if (dateObj < today) continue;
 
             const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-            const weekDay = utcDate.getUTCDay();
+            const weekDay = utcDate.getUTCDay(); 
 
             let dayTimes: string[] = []
-            
-            if (weekDay === 0) {
-                dayTimes = [...SUNDAY_SCHEDULE]
-            } else if (day === 19 || day === 15) {
-                dayTimes = ['19:00']
-            } else {
+            if (weekDay === 0) dayTimes = [...SUNDAY_SCHEDULE]
+            else if (day === 19 || day === 15) dayTimes = ['19:00']
+            else {
                 if (weekDay === 1) dayTimes = ['19:30'] 
                 else if (weekDay === 3 || weekDay === 5 || weekDay === 6) dayTimes = ['19:00']
             }
@@ -485,26 +501,12 @@ export default function Home() {
                         obs = 'Missa Votiva de São José';
                         teamSize = includeTuribuloDay19 ? 4 : 2;
                     }
-
                     if (day === 15 && local === PLACES[2]) {
                         obs = 'Missa Votiva Nsa. Sra. da Abadia'; teamSize = 2; 
                     }
 
-                    const normalizedTime = time.substring(0, 5);
-                    
-                    const existsInDb = rawEvents.some(evt => 
-                        evt.data === dateStr && 
-                        evt.local === local && 
-                        evt.hora.substring(0, 5) === normalizedTime
-                    );
-
-                    const existsInBatch = newEscalas.find(e => 
-                        e.data === dateStr && 
-                        e.local === local && 
-                        e.hora === time
-                    );
-
-                    if (existsInDb || existsInBatch) continue;
+                    const existsInBatch = newEscalas.find(e => e.data === dateStr && e.local === local && e.hora === time);
+                    if (existsInBatch) continue;
 
                     const currentScheduledNames = new Set([
                         ...rawEvents.filter(e => e.data === dateStr).flatMap(e => e.acolitos.map((a:any) => a.nome)),
@@ -512,6 +514,7 @@ export default function Home() {
                     ]);
 
                     const teamNames = getTeam(teamSize, dateStr, day, currentScheduledNames)
+                    
                     if (teamNames.length >= 2 || (teamSize === 1 && teamNames.length === 1)) {
                         const teamObjects = teamNames.map((nome, index) => ({ nome: nome, funcao: ROLES[index] || 'Auxiliar' }))
                         newEscalas.push({ data: dateStr, hora: time, local: local, observacao: obs, cor: color, acolitos: teamObjects })
@@ -524,26 +527,34 @@ export default function Home() {
             await supabase.from('escalas').insert(newEscalas)
             setIsAutoModalOpen(false)
             fetchEscalas()
-        } else { triggerAlert("Aviso", "Nenhuma escala gerada com os parâmetros atuais.", "info") }
+            triggerAlert("Sucesso", `${newEscalas.length} escalas geradas com sucesso!`, "success")
+        } else { triggerAlert("Aviso", "Nenhuma escala gerada. Verifique se já existem escalas ou se há acólitos disponíveis.", "info") }
+
     } catch (error: any) { triggerAlert("Erro", error.message, "error") } 
     finally { setIsGenerating(false) }
   }
 
   const generatePDF = async () => {
     try {
-        if(rawEvents.length === 0) return triggerAlert("Vazio", "Não há escalas para gerar o PDF.", "warning");
+        let eventsToPrint = rawEvents.filter(evt => evt.data.startsWith(pdfTargetMonth));
+
+        if (selectedPlace) {
+            eventsToPrint = eventsToPrint.filter(evt => evt.local === selectedPlace)
+        }
+
+        if(eventsToPrint.length === 0) {
+            return triggerAlert("Vazio", "Não há escalas neste mês para gerar o PDF.", "warning");
+        }
 
         triggerAlert("Aguarde", "Gerando PDF...", "info");
         const jsPDF = (await import('jspdf')).default;
         
         const doc = new jsPDF('p', 'mm', 'a4') 
         
-        let eventsToPrint = rawEvents
-        if (selectedPlace) eventsToPrint = eventsToPrint.filter(evt => evt.local === selectedPlace)
-        
         const sortedEvents = [...eventsToPrint].sort((a, b) => new Date(a.data + 'T' + a.hora).getTime() - new Date(b.data + 'T' + b.hora).getTime())
 
-        const refDate = sortedEvents.length > 0 ? new Date(sortedEvents[0].data + 'T12:00:00') : new Date()
+        const [yStr, mStr] = pdfTargetMonth.split('-');
+        const refDate = new Date(parseInt(yStr), parseInt(mStr) - 1, 1);
         const monthName = refDate.toLocaleDateString('pt-BR', { month: 'long' }).toUpperCase()
         const year = refDate.getFullYear()
 
@@ -632,6 +643,7 @@ export default function Home() {
         })
 
         doc.save(`escala_${monthName}_${year}.pdf`)
+        setIsPdfModalOpen(false)
         closeAlert()
     } catch (error) {
         console.error(error);
@@ -736,6 +748,8 @@ export default function Home() {
   }
   const showDay19Option = checkDay19Exists()
 
+  const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans pb-20">
       {customAlert.isOpen && (
@@ -806,7 +820,7 @@ export default function Home() {
                     </div>
                 )}
                 {canManage && (
-                    <button onClick={generatePDF} className="h-8 px-3 rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white text-xs font-bold flex items-center gap-2 transition shadow-sm">
+                    <button onClick={() => setIsPdfModalOpen(true)} className="h-8 px-3 rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white text-xs font-bold flex items-center gap-2 transition shadow-sm">
                         <Download size={16}/> Baixar Escala
                     </button>
                 )}
@@ -902,7 +916,7 @@ export default function Home() {
                                 <Link href="/atas" className="w-full h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white flex items-center justify-center gap-2 text-xs font-medium"><ClipboardList size={16}/> Atas</Link>
                                 </>
                              )}
-                             <button onClick={generatePDF} className="w-full h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white flex items-center justify-center gap-2 text-xs font-medium"><FileText size={16}/> Baixar Escala</button>
+                             <button onClick={() => setIsPdfModalOpen(true)} className="w-full h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white flex items-center justify-center gap-2 text-xs font-medium"><FileText size={16}/> Baixar Escala</button>
                           </div>
                       </div>
                   </div>
@@ -926,28 +940,43 @@ export default function Home() {
                                       const day = date.getDate()
                                       const weekDay = date.toLocaleDateString('pt-BR', { weekday: 'long' })
                                       
+                                      // Logica para determinar se o evento é passado
+                                      const eventDate = new Date(evt.data + 'T12:00:00');
+                                      const isPast = eventDate < todayDate;
+
                                       return (
-                                          <div key={evt.id} className={`group bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row gap-4 transition shadow-sm hover:shadow-md ${PLACE_COLORS[evt.local] || 'border-l-gray-300'} border-l-[3px]`}>
-                                              <div className="flex flex-row md:flex-col items-center justify-between md:justify-center bg-zinc-950 border border-zinc-800 rounded-lg p-2 md:w-14 md:h-14 shrink-0">
+                                          <div key={evt.id} className={`group relative bg-zinc-900 border rounded-xl p-4 flex flex-col md:flex-row gap-4 transition shadow-sm hover:shadow-md 
+                                              ${isPast ? 'bg-zinc-950 border-zinc-800/50 opacity-75 grayscale-[0.3]' : 'bg-zinc-900 border-zinc-800'}
+                                              ${isPast ? (PAST_PLACE_COLORS[evt.local] || 'border-l-zinc-700') : (PLACE_COLORS[evt.local] || 'border-l-gray-300')} border-l-[3px]`
+                                          }>
+                                              {/* Icone de Folder para passados */}
+                                              {isPast && (
+                                                  <div className="absolute top-2 right-2 text-zinc-600 opacity-20 group-hover:opacity-50 transition">
+                                                      <FolderClock size={48} strokeWidth={1} />
+                                                  </div>
+                                              )}
+
+                                              <div className={`flex flex-row md:flex-col items-center justify-between md:justify-center border rounded-lg p-2 md:w-14 md:h-14 shrink-0 
+                                                  ${isPast ? 'bg-zinc-900 border-zinc-800 text-zinc-500' : 'bg-zinc-950 border-zinc-800'}`}>
                                                   <div className="flex flex-col items-center">
-                                                    <span className="text-xl font-bold text-white leading-none">{day}</span>
+                                                    <span className={`text-xl font-bold leading-none ${isPast ? 'text-zinc-500' : 'text-white'}`}>{day}</span>
                                                     <span className="text-[9px] text-zinc-500 font-bold uppercase">{date.toLocaleDateString('pt-BR', {month:'short'}).replace('.','')}</span>
                                                   </div>
                                                   <div className="md:hidden text-xs text-zinc-400 font-bold">{weekDay.split('-')[0]}</div>
                                               </div>
 
-                                              <div className="flex-1 min-w-0">
+                                              <div className="flex-1 min-w-0 z-10">
                                                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3">
                                                       <div>
-                                                          <h3 className="font-bold text-white text-sm truncate">{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
+                                                          <h3 className={`font-bold text-sm truncate ${isPast ? 'text-zinc-400' : 'text-white'}`}>{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
                                                           <p className="text-xs text-zinc-400 font-medium flex items-center gap-1.5 capitalize mt-0.5">
-                                                              <Clock size={12}/> {weekDay} às <span className="text-zinc-200 font-bold">{evt.hora.substring(0,5)}</span>
+                                                              <Clock size={12}/> {weekDay} às <span className={`${isPast ? 'text-zinc-400' : 'text-zinc-200'} font-bold`}>{evt.hora.substring(0,5)}</span>
                                                               {evt.observacao && <span className="bg-yellow-900/30 text-yellow-500 text-[9px] px-1.5 py-0.5 rounded border border-yellow-900/50 normal-case ml-1">{evt.observacao}</span>}
                                                           </p>
                                                       </div>
                                                       
-                                                      {canEditContext && (
-                                                          <div className="flex gap-2 mt-2 sm:mt-0">
+                                                      {canEditContext && !isPast && (
+                                                          <div className="flex gap-2 mt-2 sm:mt-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                                               <button onClick={() => handleEdit(evt)} className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg"><Edit2 size={16}/></button>
                                                               <button onClick={() => handleDelete(evt.id)} className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg"><Trash2 size={16}/></button>
                                                           </div>
@@ -957,14 +986,10 @@ export default function Home() {
                                                   <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800/50">
                                                       {evt.acolitos.map((ac: any, idx: number) => (
                                                           <div key={idx} className="flex items-center gap-2">
-                                                              {/* [!code --] Linha removida: cor azul condicional */}
-                                                              {/* <span className={`text-xs font-semibold truncate ${ac.nome.toLowerCase().includes(userName.toLowerCase()) ? 'text-blue-400' : 'text-zinc-300'}`}> */}
-                                                              
-                                                              {/* [!code ++] Linha nova: cor padrão para todos */}
-                                                              <span className="text-xs font-semibold truncate text-zinc-300">
+                                                              <span className={`text-xs font-semibold truncate ${isPast ? 'text-zinc-500' : 'text-zinc-300'}`}>
                                                                   {ac.nome}
                                                               </span>
-                                                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ml-2 ${ROLE_BADGE_STYLE}`}>
+                                                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ml-2 ${isPast ? 'border-zinc-800 text-zinc-600 bg-zinc-900' : ROLE_BADGE_STYLE}`}>
                                                                   {ac.funcao}
                                                               </span>
                                                           </div>
@@ -1062,6 +1087,35 @@ export default function Home() {
                   <button onClick={() => setIsRulesModalOpen(false)} className="w-full mt-6 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition">Entendi</button>
               </div>
           </div>
+      )}
+
+      {isPdfModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in zoom-in-95">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+                <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition"><X size={20}/></button>
+                
+                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <FileText className="text-blue-500" size={20}/> Baixar Escala
+                </h3>
+                
+                <div className="space-y-4">
+                    <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                        <label className="text-xs text-zinc-500 font-bold uppercase block mb-2">Selecione o Mês</label>
+                        <input 
+                            type="month" 
+                            value={pdfTargetMonth} 
+                            onChange={e => setPdfTargetMonth(e.target.value)} 
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white outline-none focus:border-blue-600 transition"
+                            style={{colorScheme: 'dark'}} 
+                        />
+                    </div>
+                    
+                    <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2">
+                        <Download size={18}/> Gerar Arquivo PDF
+                    </button>
+                </div>
+            </div>
+        </div>
       )}
 
       {isAutoModalOpen && (

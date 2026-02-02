@@ -15,24 +15,15 @@ interface AlertState {
     title: string; message: string;
 }
 
-// --- COMPONENTE SELECT CUSTOMIZADO (RESOLVE FUNDO BRANCO E ESPAÇAMENTO) ---
+// --- COMPONENTE SELECT CUSTOMIZADO ---
 const CustomSelect = ({ 
-    options, 
-    value, 
-    onChange, 
-    placeholder = "Selecione...", 
-    icon: Icon 
+    options, value, onChange, placeholder = "Selecione...", icon: Icon 
 }: { 
-    options: { value: string, label: string }[], 
-    value: string, 
-    onChange: (val: string) => void, 
-    placeholder?: string,
-    icon?: React.ElementType
+    options: { value: string, label: string }[], value: string, onChange: (val: string) => void, placeholder?: string, icon?: React.ElementType
 }) => {
     const [isOpen, setIsOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    // Fecha ao clicar fora
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -47,7 +38,6 @@ const CustomSelect = ({
 
     return (
         <div className="relative w-full" ref={containerRef}>
-            {/* Botão Principal */}
             <button 
                 onClick={() => setIsOpen(!isOpen)}
                 className={`w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 h-11 flex items-center justify-between text-sm transition-all hover:border-zinc-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none ${isOpen ? 'ring-2 ring-blue-500/20 border-blue-500' : ''}`}
@@ -61,30 +51,22 @@ const CustomSelect = ({
                 <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Menu Dropdown Flutuante */}
             {isOpen && (
                 <div className="absolute z-50 w-full mt-2 bg-zinc-900 border border-zinc-700/50 rounded-xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
                     <div className="p-1.5 space-y-0.5">
                         {options.map((option) => (
                             <button
                                 key={option.value}
-                                onClick={() => {
-                                    onChange(option.value)
-                                    setIsOpen(false)
-                                }}
+                                onClick={() => { onChange(option.value); setIsOpen(false); }}
                                 className={`w-full text-left px-4 py-2.5 text-sm rounded-lg flex items-center justify-between transition-colors ${
-                                    value === option.value 
-                                        ? 'bg-blue-600 text-white font-medium' 
-                                        : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                    value === option.value ? 'bg-blue-600 text-white font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                                 }`}
                             >
                                 <span className="truncate">{option.label}</span>
                                 {value === option.value && <Check size={14} />}
                             </button>
                         ))}
-                        {options.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-zinc-500 text-center">Nenhuma opção disponível</div>
-                        )}
+                        {options.length === 0 && <div className="px-4 py-3 text-sm text-zinc-500 text-center">Nenhuma opção disponível</div>}
                     </div>
                 </div>
             )}
@@ -105,18 +87,18 @@ export default function SettingsPage() {
   const [exStart, setExStart] = useState('')
   const [exEnd, setExEnd] = useState('')
   
-  const [fixedRules, setFixedRules] = useState<{ acolito: string, day: string }[]>([]) 
+  // Agora guardamos o ID do banco também
+  const [fixedRules, setFixedRules] = useState<{ id?: number, acolito: string, day: string }[]>([]) 
   const [newFixedRule, setNewFixedRule] = useState({ acolito: '', day: '' })
 
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'info', title: '', message: ''
   })
 
-  // Transforma os acólitos em opções para o CustomSelect
   const acoliteOptions = useMemo(() => {
       return dbAcolitos.map(a => ({
-          value: `${a.nome} ${a.sobrenome}`.trim(),
-          label: `${a.nome} ${a.sobrenome}`.trim()
+          value: `${a.nome} ${a.sobrenome || ''}`.trim(),
+          label: `${a.nome} ${a.sobrenome || ''}`.trim()
       }))
   }, [dbAcolitos])
 
@@ -128,13 +110,16 @@ export default function SettingsPage() {
 
   async function fetchData() {
     setLoading(true)
-    const [acolitosRes, restricoesRes] = await Promise.all([
+    const [acolitosRes, restricoesRes, fixedRes] = await Promise.all([
         supabase.from('acolitos').select('id, nome, sobrenome, ativo').eq('ativo', true).order('nome'),
-        supabase.from('restricoes').select('*').order('data_inicio', { ascending: true })
+        supabase.from('restricoes').select('*').order('data_inicio', { ascending: true }),
+        // Busca as regras fixas salvas no banco
+        supabase.from('regras_fixas').select('*').order('day', { ascending: true })
     ])
 
     if (acolitosRes.data) setDbAcolitos(acolitosRes.data)
     if (restricoesRes.data) setRestrictions(restricoesRes.data)
+    if (fixedRes.data) setFixedRules(fixedRes.data) // Carrega no estado
     setLoading(false)
   }
 
@@ -151,19 +136,13 @@ export default function SettingsPage() {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
       const existing = restrictions.find(r => 
-          r.acolito_nome === selectedResAcolyte && 
-          r.data_inicio <= dateStr && 
-          (r.data_fim || r.data_inicio) >= dateStr
+          r.acolito_nome === selectedResAcolyte && r.data_inicio <= dateStr && (r.data_fim || r.data_inicio) >= dateStr
       );
 
       if (existing) {
           await supabase.from('restricoes').delete().eq('id', existing.id);
       } else {
-          await supabase.from('restricoes').insert({
-              acolito_nome: selectedResAcolyte,
-              data_inicio: dateStr,
-              data_fim: dateStr
-          });
+          await supabase.from('restricoes').insert({ acolito_nome: selectedResAcolyte, data_inicio: dateStr, data_fim: dateStr });
       }
       
       const { data } = await supabase.from('restricoes').select('*').order('data_inicio', { ascending: true })
@@ -184,30 +163,24 @@ export default function SettingsPage() {
       rules.forEach(r => {
          let curr = new Date(r.data_inicio + 'T12:00:00');
          const end = new Date((r.data_fim || r.data_inicio) + 'T12:00:00');
-         while(curr <= end) {
-             dates.add(curr.toISOString().split('T')[0]);
-             curr.setDate(curr.getDate() + 1);
-         }
+         while(curr <= end) { dates.add(curr.toISOString().split('T')[0]); curr.setDate(curr.getDate() + 1); }
       });
       const sortedDates = Array.from(dates).sort();
       if(sortedDates.length === 0) return "";
 
       const ranges: string[] = [];
-      let start = sortedDates[0];
-      let prev = sortedDates[0];
+      let start = sortedDates[0], prev = sortedDates[0];
 
       for (let i = 1; i < sortedDates.length; i++) {
           const currDate = new Date(sortedDates[i] + 'T12:00:00');
           const prevDate = new Date(prev + 'T12:00:00');
           const diffDays = (currDate.getTime() - prevDate.getTime()) / (1000 * 3600 * 24);
 
-          if (diffDays === 1) {
-              prev = sortedDates[i];
-          } else {
+          if (diffDays === 1) { prev = sortedDates[i]; } 
+          else {
               if (start === prev) ranges.push(new Date(start + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}));
               else ranges.push(`${new Date(start + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} a ${new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}`);
-              start = sortedDates[i];
-              prev = sortedDates[i];
+              start = sortedDates[i]; prev = sortedDates[i];
           }
       }
       if (start === prev) ranges.push(new Date(start + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}));
@@ -231,10 +204,34 @@ export default function SettingsPage() {
       setExclusionRules([...exclusionRules, { id: Math.random().toString(), start, end }]);
       setExStart(''); setExEnd('');
   }
-  const addFixedRule = () => {
+
+  // --- NOVA FUNÇÃO PARA SALVAR NO BANCO ---
+  const addFixedRule = async () => {
       if(!newFixedRule.acolito || !newFixedRule.day) return;
-      setFixedRules([...fixedRules, newFixedRule]);
-      setNewFixedRule({ acolito: '', day: '' });
+      
+      const payload = { acolito: newFixedRule.acolito, day: newFixedRule.day };
+      
+      // Salva no Supabase
+      const { data, error } = await supabase.from('regras_fixas').insert([payload]).select();
+      
+      if (error) {
+          triggerAlert("Erro", "Falha ao salvar regra fixa.", "error");
+      } else if (data) {
+          // Atualiza o estado local com o ID gerado pelo banco
+          setFixedRules([...fixedRules, data[0]]);
+          setNewFixedRule({ acolito: '', day: '' });
+          triggerAlert("Sucesso", "Regra fixa salva.", "success");
+      }
+  }
+
+  // --- NOVA FUNÇÃO PARA DELETAR DO BANCO ---
+  const deleteFixedRule = async (id: number | undefined, index: number) => {
+      if (id) {
+          // Se tem ID, apaga do banco
+          await supabase.from('regras_fixas').delete().eq('id', id);
+      }
+      // Atualiza visualmente
+      setFixedRules(prev => prev.filter((_, idx) => idx !== index));
   }
 
   const renderResCalendar = () => {
@@ -428,7 +425,7 @@ export default function SettingsPage() {
                                         <span className="w-6 h-6 rounded bg-zinc-900 flex items-center justify-center font-bold text-emerald-500 border border-emerald-900/30">{rule.day}</span>
                                         <span className="text-zinc-200 font-bold">{rule.acolito}</span>
                                     </div>
-                                    <button onClick={() => setFixedRules(prev => prev.filter((_, idx) => idx !== i))} className="text-zinc-600 hover:text-red-500 transition"><Trash2 size={14}/></button>
+                                    <button onClick={() => deleteFixedRule(rule.id, i)} className="text-zinc-600 hover:text-red-500 transition"><Trash2 size={14}/></button>
                                 </div>
                             ))}
                             {fixedRules.length === 0 && <p className="text-xs text-zinc-600 italic text-center py-4 bg-zinc-950/50 rounded-xl border border-dashed border-zinc-800/50">Nenhuma regra fixa definida.</p>}
