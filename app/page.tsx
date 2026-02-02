@@ -560,7 +560,7 @@ export default function Home() {
 
         doc.setFont("helvetica", "bold")
         doc.setFontSize(14)
-        doc.text("ESCALA DOS ACÓLITOS – " + monthName + "/" + year, 105, 15, { align: "center" })
+        doc.text("ESCALA MENSAL– " + monthName + "/" + year, 105, 15, { align: "center" })
 
         const startX = 10
         const startY = 25
