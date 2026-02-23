@@ -795,7 +795,7 @@ export default function Home() {
                         São José Operário
                         <button onClick={() => setIsAboutModalOpen(true)} className="text-zinc-500 hover:text-white transition"><Info size={14} /></button>
                         <button onClick={() => setIsRulesModalOpen(true)} className="px-3 py-1 bg-zinc-800 rounded-lg text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-700 transition flex items-center gap-2">
-                            <BookOpen size={14} /> Regras do Sistema
+                            <BookOpen size={14} />
                         </button>
                     </h1>
                     <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{userProfile === 'admin' ? 'Admin' : 'Acólito'}</span>
@@ -811,12 +811,16 @@ export default function Home() {
                         <Link href="/atas" className="h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs font-medium flex items-center gap-2 transition mr-2">
                             <ClipboardList size={16}/> Atas
                         </Link>
+                        <Link href="/escala-complementar" className="h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs font-medium flex items-center gap-2 transition">
+                            <Settings size={16}/> Escala Complementar
+                        </Link>
                         <Link href="/acolitos" className="h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs font-medium flex items-center gap-2 transition mr-2">
                             <Users size={16}/> Equipe
                         </Link>
                         <Link href="/configuracoes" className="h-8 px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs font-medium flex items-center gap-2 transition">
-                            <Settings size={16}/> Configurações Gerais
+                            <Settings size={16}/> Config
                         </Link>
+                        
                     </div>
                 )}
                 {canManage && (

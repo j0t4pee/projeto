@@ -11,8 +11,8 @@ import {
 import Link from 'next/link'
 
 interface AlertState {
-    isOpen: boolean; type: 'error' | 'success' | 'warning' | 'info';
-    title: string; message: string;
+  isOpen: boolean; type: 'error' | 'success' | 'warning' | 'info';
+  title: string; message: string;
 }
 
 // --- COMPONENTE SELECT CUSTOMIZADO ---
@@ -87,13 +87,15 @@ export default function SettingsPage() {
   const [exStart, setExStart] = useState('')
   const [exEnd, setExEnd] = useState('')
   
-  // Agora guardamos o ID do banco também
   const [fixedRules, setFixedRules] = useState<{ id?: number, acolito: string, day: string }[]>([]) 
   const [newFixedRule, setNewFixedRule] = useState({ acolito: '', day: '' })
 
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'info', title: '', message: ''
   })
+  
+  // --- ESTADO DO NOVO MODAL ---
+  const [showConfirmClearModal, setShowConfirmClearModal] = useState(false)
 
   const acoliteOptions = useMemo(() => {
       return dbAcolitos.map(a => ({
@@ -110,16 +112,21 @@ export default function SettingsPage() {
 
   async function fetchData() {
     setLoading(true)
+
+    // LÓGICA DE AUTO-CLEAN (Virada de Mês)
+    const today = new Date();
+    const firstDayOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+    await supabase.from('restricoes').delete().lt('data_inicio', firstDayOfMonth);
+
     const [acolitosRes, restricoesRes, fixedRes] = await Promise.all([
         supabase.from('acolitos').select('id, nome, sobrenome, ativo').eq('ativo', true).order('nome'),
         supabase.from('restricoes').select('*').order('data_inicio', { ascending: true }),
-        // Busca as regras fixas salvas no banco
         supabase.from('regras_fixas').select('*').order('day', { ascending: true })
     ])
 
     if (acolitosRes.data) setDbAcolitos(acolitosRes.data)
     if (restricoesRes.data) setRestrictions(restricoesRes.data)
-    if (fixedRes.data) setFixedRules(fixedRes.data) // Carrega no estado
+    if (fixedRes.data) setFixedRules(fixedRes.data) 
     setLoading(false)
   }
 
@@ -155,6 +162,29 @@ export default function SettingsPage() {
           await supabase.from('restricoes').delete().in('id', idsToDelete);
           const { data } = await supabase.from('restricoes').select('*').order('data_inicio', { ascending: true })
           if(data) setRestrictions(data)
+      }
+  }
+
+  // --- FUNÇÕES DO MODAL DE LIMPAR TUDO ---
+  const handleOpenClearModal = () => {
+      setShowConfirmClearModal(true);
+  }
+
+  const executeClearAllRestrictions = async () => {
+      setShowConfirmClearModal(false); // Fecha o modal
+      
+      const idsToDelete = restrictions.map(r => r.id);
+      if(idsToDelete.length > 0) {
+          const { error } = await supabase.from('restricoes').delete().in('id', idsToDelete);
+          
+          if (error) {
+              triggerAlert("Erro", "Falha ao limpar restrições.", "error");
+          } else {
+              setRestrictions([]);
+              triggerAlert("Sucesso", "Todas as restrições foram limpas.", "success");
+          }
+      } else {
+          triggerAlert("Aviso", "Não há restrições para limpar.", "warning");
       }
   }
 
@@ -205,32 +235,26 @@ export default function SettingsPage() {
       setExStart(''); setExEnd('');
   }
 
-  // --- NOVA FUNÇÃO PARA SALVAR NO BANCO ---
   const addFixedRule = async () => {
       if(!newFixedRule.acolito || !newFixedRule.day) return;
       
       const payload = { acolito: newFixedRule.acolito, day: newFixedRule.day };
       
-      // Salva no Supabase
       const { data, error } = await supabase.from('regras_fixas').insert([payload]).select();
       
       if (error) {
           triggerAlert("Erro", "Falha ao salvar regra fixa.", "error");
       } else if (data) {
-          // Atualiza o estado local com o ID gerado pelo banco
           setFixedRules([...fixedRules, data[0]]);
           setNewFixedRule({ acolito: '', day: '' });
           triggerAlert("Sucesso", "Regra fixa salva.", "success");
       }
   }
 
-  // --- NOVA FUNÇÃO PARA DELETAR DO BANCO ---
   const deleteFixedRule = async (id: number | undefined, index: number) => {
       if (id) {
-          // Se tem ID, apaga do banco
           await supabase.from('regras_fixas').delete().eq('id', id);
       }
-      // Atualiza visualmente
       setFixedRules(prev => prev.filter((_, idx) => idx !== index));
   }
 
@@ -293,6 +317,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
+      {/* ALERTAS GERAIS */}
       {customAlert.isOpen && (
           <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-right">
               <div className={`px-4 py-3 rounded-xl border shadow-xl flex items-center gap-3 ${customAlert.type === 'error' ? 'bg-red-900/20 border-red-900/50 text-red-200' : 'bg-green-900/20 border-green-900/50 text-green-200'}`}>
@@ -302,10 +327,38 @@ export default function SettingsPage() {
           </div>
       )}
 
+      {/* --- MODAL DE CONFIRMAÇÃO --- */}
+      {showConfirmClearModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center gap-3 text-red-500 mb-4">
+                      <AlertCircle size={24} />
+                      <h3 className="text-lg font-bold text-white">Limpar Todas as Restrições?</h3>
+                  </div>
+                  <p className="text-sm text-zinc-400 mb-6">
+                      Tem certeza que deseja apagar <strong className="text-white">TODAS</strong> as restrições de <strong className="text-white">TODOS</strong> os acólitos? Esta ação não poderá ser desfeita.
+                  </p>
+                  <div className="flex justify-end gap-3">
+                      <button 
+                          onClick={() => setShowConfirmClearModal(false)}
+                          className="px-4 py-2 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={executeClearAllRestrictions}
+                          className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition shadow-lg shadow-red-900/20 flex items-center gap-2"
+                      >
+                          <Trash2 size={16} /> Confirmar Exclusão
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <main className="pt-24 px-4 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* COLUNA ESQUERDA (2/3) - CALENDÁRIO E LISTA */}
             <div className="lg:col-span-2 space-y-8">
                 {/* BLOCO 1: SELEÇÃO E CALENDÁRIO */}
                 <div className="space-y-4">
@@ -314,7 +367,6 @@ export default function SettingsPage() {
                             <h2 className="text-xl font-bold text-white flex items-center gap-2"><CalendarOff className="text-red-500"/> Indisponibilidade Individual</h2>
                             <p className="text-sm text-zinc-400 mt-1">Selecione um acólito e clique nos dias para bloquear.</p>
                         </div>
-                        {/* SELECT CUSTOMIZADO */}
                         <div className="w-full md:w-72">
                             <CustomSelect 
                                 value={selectedResAcolyte} 
@@ -333,9 +385,19 @@ export default function SettingsPage() {
 
                 {/* BLOCO 2: LISTA DE RESTRIÇÕES SALVAS */}
                 <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-6">
-                        <Info className="text-blue-500" size={20}/>
-                        <h2 className="text-lg font-bold text-white">Restrições Salvas</h2>
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-2">
+                            <Info className="text-blue-500" size={20}/>
+                            <h2 className="text-lg font-bold text-white">Restrições Salvas</h2>
+                        </div>
+                        {restrictions.length > 0 && (
+                            <button 
+                                onClick={handleOpenClearModal}
+                                className="text-xs bg-red-900/20 hover:bg-red-900/50 text-red-400 border border-red-900/50 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 font-medium"
+                            >
+                                <Trash2 size={14}/> Limpar Todas
+                            </button>
+                        )}
                     </div>
                     
                     <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
@@ -365,7 +427,6 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            {/* COLUNA DIREITA (1/3) - CONFIGURAÇÕES GLOBAIS */}
             <div className="lg:col-span-1 space-y-8">
                 
                 {/* PULAR DIAS (GLOBAL) */}
@@ -404,7 +465,6 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="space-y-3 mb-4">
-                            {/* SELECT CUSTOMIZADO TAMBÉM NA ESCALA FIXA */}
                             <CustomSelect 
                                 value={newFixedRule.acolito} 
                                 onChange={(val) => setNewFixedRule({...newFixedRule, acolito: val})} 
