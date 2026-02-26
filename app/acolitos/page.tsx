@@ -1,20 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase' 
-import { useTheme } from 'next-themes'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
-  ArrowLeft, Save, Trash2, User, CheckCircle2, XCircle, Edit2, X, 
-  Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, Settings, 
-  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole
+  Menu, X, LogOut, Users, DollarSign, ClipboardList, Settings, ChevronLeft,
+  ArrowLeft, Save, Trash2, User, CheckCircle2, XCircle, Edit2, 
+  Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, 
+  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole, Download
 } from 'lucide-react'
+
+// Constante de Versão
+const APP_VERSION = "v3.87.0-ui-folder-light" 
 
 // --- Tipos e Interfaces ---
 interface AlertState {
     isOpen: boolean;
-    type: 'error' | 'success' | 'warning';
+    type: 'error' | 'success' | 'warning' | 'info';
     title: string;
     message: string;
     onConfirm?: () => void;
@@ -30,10 +33,11 @@ const MODULES = [
 
 export default function AcolitosPage() {
   const router = useRouter()
-  const { setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  
   const [loading, setLoading] = useState(true)
   const [acolitos, setAcolitos] = useState<any[]>([])
-  
   const [userRole, setUserRole] = useState('padrao')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -53,18 +57,25 @@ export default function AcolitosPage() {
   })
 
   useEffect(() => {
-    setTheme('dark')
+    setMounted(true)
     const authData = localStorage.getItem('auth_token')
     if (!authData) { router.push('/login'); return }
     
     try {
         const user = JSON.parse(authData)
-        setUserRole(user.perfil)
+        setUserRole(user.perfil || 'padrao')
     } catch (e) { router.push('/login') }
+    
     fetchAcolitos()
   }, [])
 
-  const triggerAlert = (title: string, message: string, type: 'error' | 'success' | 'warning') => {
+  const handleLogout = (e: React.MouseEvent) => {
+    e.preventDefault()
+    localStorage.removeItem('auth_token')
+    window.location.href = '/login'
+  }
+
+  const triggerAlert = (title: string, message: string, type: 'error' | 'success' | 'warning' | 'info' = 'info') => {
       setCustomAlert({ isOpen: true, title, message, type })
   }
   const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
@@ -86,11 +97,9 @@ export default function AcolitosPage() {
   const getAniversariantesData = () => {
     const today = new Date()
     const currentDay = today.getDate()
-    const currentMonth = today.getMonth() + 1 // 1 a 12
+    const currentMonth = today.getMonth() + 1
     const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
     
-    // Cria um número comparável: Mês * 100 + Dia
-    // Ex: 5 de Fevereiro = 205. 25 de Dezembro = 1225.
     const currentCompareValue = (currentMonth * 100) + currentDay;
 
     const todos = acolitos
@@ -99,8 +108,6 @@ export default function AcolitosPage() {
         const [ano, mes, dia] = a.data_nascimento.split('-')
         const diaNum = parseInt(dia)
         const mesNum = parseInt(mes)
-        
-        // Valor comparável do usuário
         const userCompareValue = (mesNum * 100) + diaNum;
 
         return {
@@ -112,13 +119,10 @@ export default function AcolitosPage() {
           isToday: userCompareValue === currentCompareValue,
         }
       })
-      // Ordena de Janeiro a Dezembro pelo valor comparável
       .sort((a, b) => a.compareValue - b.compareValue)
 
     return {
       hoje: todos.filter(a => a.isToday),
-      // Filtra estritamente quem tem o valor maior que hoje
-      // Ex: Se hoje é 205 (5/fev), mostra apenas quem tem 206 pra cima
       proximos: todos.filter(a => a.compareValue > currentCompareValue).slice(0, 5)
     }
   }
@@ -195,7 +199,7 @@ export default function AcolitosPage() {
 
         setIsFormOpen(false)
         fetchAcolitos()
-        triggerAlert('Sucesso', 'Dados atualizados.', 'success')
+        triggerAlert('Sucesso', 'Dados atualizados com sucesso.', 'success')
     } catch (error: any) { triggerAlert('Erro', error.message, 'error') }
   }
 
@@ -204,7 +208,7 @@ export default function AcolitosPage() {
     try { 
         await supabase.from('acolitos').update({ ativo: !statusAtual }).eq('id', id)
         fetchAcolitos()
-    } catch { triggerAlert('Erro', 'Falha no status.', 'error') }
+    } catch { triggerAlert('Erro', 'Falha ao mudar status.', 'error') }
   }
 
   async function handleQuickToggle(e: any, id: number, field: string, currentValue: boolean) {
@@ -218,8 +222,12 @@ export default function AcolitosPage() {
 
   async function handleDelete(e: any, id: number) {
     e.stopPropagation();
-    triggerConfirm('Excluir?', 'Irreversível.', async () => {
-        try { await supabase.from('acolitos').delete().eq('id', id); fetchAcolitos(); closeAlert() } catch (e: any) { triggerAlert('Erro', e.message, 'error') }
+    triggerConfirm('Excluir?', 'Esta ação é irreversível.', async () => {
+        try { 
+            await supabase.from('acolitos').delete().eq('id', id); 
+            fetchAcolitos(); 
+            closeAlert() 
+        } catch (e: any) { triggerAlert('Erro', e.message, 'error') }
     })
   }
 
@@ -227,97 +235,338 @@ export default function AcolitosPage() {
       (a.nome + ' ' + a.sobrenome).toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const canManage = userRole === 'admin' || userRole === 'diretoria';
+
+  if (!mounted) return null;
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-blue-500/30">
+    <div className="flex min-h-screen bg-gray-50 text-gray-900 font-sans pb-20 lg:pb-0 selection:bg-blue-500/30">
       
-      {/* Alert Component */}
+      {/* Alertas */}
       {customAlert.isOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm text-center space-y-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
-                      {customAlert.type === 'error' ? <AlertCircle size={28}/> : <CheckCircle2 size={28}/>}
+          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+                      customAlert.type === 'error' ? 'bg-red-50 text-red-500' : 
+                      customAlert.type === 'success' ? 'bg-green-50 text-green-500' : 
+                      customAlert.type === 'warning' ? 'bg-yellow-50 text-yellow-600' : 
+                      'bg-blue-50 text-blue-600'
+                  }`}>
+                      {customAlert.type === 'error' && <AlertCircle size={28}/>}
+                      {customAlert.type === 'success' && <CheckCircle2 size={28}/>}
+                      {customAlert.type === 'warning' && <AlertTriangle size={28}/>}
+                      {customAlert.type === 'info' && <AlertCircle size={28}/>}
                   </div>
-                  <h3 className="text-lg font-bold text-white">{customAlert.title}</h3>
-                  <p className="text-sm text-zinc-400">{customAlert.message}</p>
-                  <button onClick={closeAlert} className="w-full bg-zinc-800 py-3 rounded-xl transition">Entendi</button>
+                  
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">{customAlert.title}</h3>
+                      <p className="text-sm text-gray-600 leading-relaxed">{customAlert.message}</p>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                      {!customAlert.onConfirm ? (
+                          <button onClick={closeAlert} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold py-3 rounded-xl transition">Entendi</button>
+                      ) : (
+                          <>
+                              <button onClick={closeAlert} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-bold py-3 rounded-xl transition">Cancelar</button>
+                              <button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); closeAlert(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition">Sim, confirmar</button>
+                          </>
+                      )}
+                  </div>
               </div>
           </div>
       )}
 
-      {/* --- MODAL DE CADASTRO/EDIÇÃO (RESTAURADO) --- */}
+      {/* Header Mobile Opcional */}
+      <header className="lg:hidden fixed top-0 w-full z-40 bg-white/90 backdrop-blur-md border-b border-gray-200 h-16 px-4 flex items-center justify-between">
+         <div className="flex items-center gap-3">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="text-gray-600 p-1 -ml-1"><Menu size={24}/></button>
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-sm shadow-md">JP</div>
+            <h1 className="text-sm font-bold text-gray-900">Gestão de Equipe</h1>
+         </div>
+      </header>
+
+      {/* Overlay Mobile */}
+      {isMobileMenuOpen && (
+          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
+      )}
+
+      {/* Sidebar / Menu Vertical */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+             <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-md">JP</div>
+                 <div>
+                     <h1 className="text-sm font-bold leading-none text-gray-900">São José Operário</h1>
+                     <span className="text-[10px] text-gray-500 uppercase tracking-widest mt-1 block">{userRole === 'admin' ? 'Admin' : 'Acólito'}</span>
+                 </div>
+             </div>
+             <button className="lg:hidden text-gray-400 hover:text-gray-900" onClick={() => setIsMobileMenuOpen(false)}><X size={20}/></button>
+         </div>
+
+         <nav className="flex-1 overflow-y-auto p-4 space-y-2">
+            <Link href="/" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 text-sm font-medium transition">
+                <ChevronLeft size={18}/> Voltar ao Início
+            </Link>
+
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-6 mb-3 px-2">Menu Principal</div>
+            {canManage && (
+                <>
+                    <Link href="/financeiro" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 text-sm font-medium transition">
+                        <DollarSign size={18}/> Financeiro
+                    </Link>
+                    <Link href="/atas" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 text-sm font-medium transition">
+                        <ClipboardList size={18}/> Atas
+                    </Link>
+                    <Link href="/escala-complementar" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 text-sm font-medium transition">
+                        <Settings size={18}/> Escala Complementar
+                    </Link>
+                    <Link href="/acolitos" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 text-sm font-medium transition">
+                        <Users size={18}/> Equipe
+                    </Link>
+                    <Link href="/configuracoes" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 text-sm font-medium transition">
+                        <Settings size={18}/> Configurações
+                    </Link>
+                </>
+            )}
+         </nav>
+
+         <div className="p-4 border-t border-gray-100 flex items-center gap-2">
+              <button onClick={handleLogout} className="flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 font-bold transition text-sm">
+                  <LogOut size={16}/> Sair do Sistema
+              </button>
+         </div>
+      </aside>
+
+      {/* Conteúdo Principal */}
+      <main className="flex-1 lg:ml-64 px-4 py-8 max-w-7xl mx-auto w-full pt-20 lg:pt-8">
+        
+        {/* Título e Info da Página */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div>
+                <h2 className="text-2xl font-bold text-gray-900 leading-tight">Gestão de Equipe</h2>
+                <p className="text-sm text-gray-500 font-medium">Acólitos & Cerimoniários do Santuário</p>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-bold text-gray-600 shadow-sm w-fit">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {acolitos.length} Membros
+            </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+            
+            {/* Coluna Esquerda: Busca, Botão e Lista (Ocupa 3 colunas no Desktop) */}
+            <div className="lg:col-span-3 space-y-6">
+                
+                {/* Search e Ação */}
+                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+                    <div className="relative w-full sm:w-96">
+                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18}/>
+                        <input 
+                            placeholder="Buscar por nome..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-50 text-gray-900 text-sm pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-blue-500 focus:bg-white transition"
+                        />
+                    </div>
+                    {canManage && (
+                        <button onClick={openNewForm} className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20">
+                            <Plus size={18}/> Novo Acólito
+                        </button>
+                    )}
+                </div>
+
+                {loading ? (
+                    <div className="text-center py-20 text-gray-400 animate-pulse font-medium">Carregando equipe...</div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {filteredAcolitos.map((acolito) => (
+                            <div key={acolito.id} onClick={() => canManage ? handleEdit(acolito) : null} 
+                                 className={`group relative bg-white rounded-2xl border transition-all duration-300 overflow-hidden shadow-sm
+                                 ${!acolito.ativo ? 'opacity-60 grayscale bg-gray-50' : 'border-gray-200'} 
+                                 ${canManage ? 'cursor-pointer hover:border-blue-300 hover:shadow-md' : ''}`}>
+                                
+                                <div className="p-4 pb-14"> 
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                                                {acolito.nome?.substring(0,2).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 text-sm leading-tight group-hover:text-blue-600 transition-colors">{acolito.nome} {acolito.sobrenome}</h3>
+                                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                    {acolito.perfil !== 'padrao' && <span className="text-[9px] font-bold text-purple-700 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Shield size={10}/> {acolito.perfil}</span>}
+                                                    {acolito.parceiro_id && <span className="text-[9px] font-bold text-pink-700 bg-pink-100 border border-pink-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Heart size={10}/> Dupla</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {canManage && (
+                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(e, acolito.id); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition">
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Ações rápidas no hover */}
+                                <div className={`absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-100 h-11 flex items-center justify-around transition-transform duration-200 z-10 
+                                    ${canManage ? 'translate-y-full group-hover:translate-y-0' : ''}`}>
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title="FDS" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.apenas_fim_de_semana ? 'text-yellow-600' : 'text-gray-400'}`}><CalendarClock size={16}/></button>
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.manuseia_missal ? 'text-blue-600' : 'text-gray-400'}`}><BookOpen size={16}/></button>
+                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.manuseia_turibulo ? 'text-orange-500' : 'text-gray-400'}`}><Flame size={16}/></button>
+                                    <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} title="Status" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 ${acolito.ativo ? 'text-green-500' : 'text-red-500'}`}><CheckCircle2 size={16}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Coluna Direita: Sidebar de Aniversariantes (Ocupa 1 coluna no Desktop) */}
+            <aside className="lg:col-span-1 lg:sticky lg:top-8 space-y-4">
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                        <Cake size={18} className="text-pink-600" />
+                        <h3 className="font-bold text-xs uppercase tracking-widest text-gray-600">Aniversariantes</h3>
+                    </div>
+
+                    <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                        {/* Hoje */}
+                        {hoje.length > 0 && (
+                            <div className="space-y-3">
+                                <span className="text-[10px] font-bold text-pink-600 uppercase tracking-wider block">Aniversário do Dia</span>
+                                {hoje.map(aniv => (
+                                    <div key={aniv.id} className="bg-pink-50 border border-pink-200 p-3 rounded-xl flex items-center gap-3 shadow-sm">
+                                        <div className="flex flex-col items-center justify-center bg-pink-500 text-white w-10 h-10 rounded-lg shrink-0 shadow-md shadow-pink-500/20">
+                                            <span className="text-sm font-black leading-none">{aniv.dia}</span>
+                                            <span className="text-[8px] uppercase font-bold">{aniv.mesNome}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-gray-900 truncate">{aniv.nome}</p>
+                                            <span className="text-[10px] font-bold text-pink-600 flex items-center gap-1">
+                                                <PartyPopper size={12}/> Parabéns!
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Próximos */}
+                        <div className="space-y-3">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Próximos</span>
+                            {proximos.length === 0 && hoje.length === 0 ? (
+                                <p className="text-xs text-gray-500 text-center italic py-2">Nenhum aniversário próximo.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {proximos.map(aniv => (
+                                        <div key={aniv.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-100 group">
+                                            <div className="flex flex-col items-center justify-center bg-white border border-gray-200 text-gray-500 w-9 h-9 rounded-lg shrink-0 group-hover:border-gray-300 transition-colors">
+                                                <span className="text-xs font-bold leading-none text-gray-700">{aniv.dia}</span>
+                                                <span className="text-[7px] uppercase font-bold">{aniv.mesNome}</span>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-bold text-gray-700 group-hover:text-gray-900 truncate transition-colors">
+                                                    {aniv.nome} {aniv.sobrenome}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+      </main>
+
+      {/* --- MODAL DE CADASTRO/EDIÇÃO (LIGHT MODE) --- */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col">
-              <div className="p-6 border-b border-zinc-800 flex justify-between items-center sticky top-0 bg-zinc-900 z-10">
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    {editingId ? <Edit2 size={20} className="text-yellow-500"/> : <User size={20} className="text-blue-500"/>} 
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+           <div className="bg-white border border-gray-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col relative">
+              
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+                  <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900">
+                    {editingId ? <Edit2 size={20} className="text-blue-600"/> : <User size={20} className="text-blue-600"/>} 
                     {editingId ? 'Editar Membro' : 'Novo Membro'}
                   </h2>
-                  <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-zinc-800 rounded-full transition"><X size={20}/></button>
+                  <button onClick={() => setIsFormOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
               </div>
               
               <div className="p-6 space-y-6">
                   {/* Nome e Sobrenome */}
                   <div className="grid grid-cols-2 gap-4">
-                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Nome</label><input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Sobrenome</label><input value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">Nome</label>
+                          <input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none text-gray-900 transition" />
+                      </div>
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">Sobrenome</label>
+                          <input value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none text-gray-900 transition" />
+                      </div>
                   </div>
 
                   {/* Gênero, Usuário e Niver */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Gênero</label>
-                        <select value={form.genero} onChange={e => setForm({...form, genero: e.target.value})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1 text-white">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">Gênero</label>
+                        <select value={form.genero} onChange={e => setForm({...form, genero: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none text-gray-900 transition">
                             <option value="M">Masculino</option><option value="F">Feminino</option>
                         </select>
                     </div>
-                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Usuário</label><input value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
-                    <div><label className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Nascimento (DD/MM)</label><input value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none mt-1" /></div>
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">Usuário</label>
+                        <input value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none text-gray-900 transition" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 block mb-1">Nascimento (DD/MM)</label>
+                        <input value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none text-gray-900 transition" />
+                    </div>
                   </div>
 
                   {/* Liturgia e Disponibilidade */}
-                  <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-4">
-                    <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-1"><Flame size={12}/> Liturgia & Disponibilidade</span>
+                  <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4">
+                    <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest flex items-center gap-1 mb-2"><Flame size={14}/> Liturgia & Disponibilidade</span>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-orange-500/50 transition">
-                            <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="accent-orange-500 scale-125"/>
-                            <span className="text-sm">Missal</span>
+                        <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-500 hover:shadow-sm transition">
+                            <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="w-4 h-4 accent-orange-600 rounded"/>
+                            <span className="text-sm font-medium text-gray-700">Missal</span>
                         </label>
-                        <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-orange-500/50 transition">
-                            <input type="checkbox" checked={form.manuseia_turibulo} onChange={e => setForm({...form, manuseia_turibulo: e.target.checked})} className="accent-orange-500 scale-125"/>
-                            <span className="text-sm">Turíbulo</span>
+                        <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-500 hover:shadow-sm transition">
+                            <input type="checkbox" checked={form.manuseia_turibulo} onChange={e => setForm({...form, manuseia_turibulo: e.target.checked})} className="w-4 h-4 accent-orange-600 rounded"/>
+                            <span className="text-sm font-medium text-gray-700">Turíbulo</span>
                         </label>
-                        <label className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-blue-500/50 transition">
-                            <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="accent-blue-500 scale-125"/>
-                            <span className="text-sm">Só FDS</span>
+                        <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-blue-500 hover:shadow-sm transition">
+                            <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                            <span className="text-sm font-medium text-gray-700">Só FDS</span>
                         </label>
                     </div>
                     {/* Horários */}
-                    <div className="grid grid-cols-2 gap-4 border-t border-zinc-800 pt-3">
+                    <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 mt-2">
                         <div>
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Clock size={10}/> Início</label>
-                            <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
+                            <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Início Disponibilidade</label>
+                            <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-sm text-gray-900 focus:border-blue-600 outline-none transition" />
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Clock size={10}/> Fim</label>
-                            <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm mt-1 focus:border-blue-600 outline-none" />
+                            <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Fim Disponibilidade</label>
+                            <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2.5 rounded-lg bg-white border border-gray-300 text-sm text-gray-900 focus:border-blue-600 outline-none transition" />
                         </div>
                     </div>
                   </div>
 
                   {/* Configurações de Perfil e Parceiro */}
-                  <div className="bg-zinc-950/50 p-4 rounded-xl border border-zinc-800 space-y-3">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center gap-1"><Settings size={12}/> Configurações</span>
+                  <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 space-y-4">
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1 mb-2"><Settings size={14}/> Configurações de Sistema</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                             <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Perfil de Acesso</label>
-                             <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} className="w-full p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
-                                <option value="padrao">Acólito</option><option value="diretoria">Diretoria</option><option value="admin">Admin</option>
+                             <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Perfil de Acesso</label>
+                             <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 text-sm text-gray-900 focus:border-blue-600 outline-none transition">
+                                <option value="padrao">Acólito (Padrão)</option><option value="diretoria">Diretoria</option><option value="admin">Administrador</option>
                              </select>
                         </div>
                         <div>
-                             <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Dupla / Parceiro</label>
-                             <select value={form.parceiro_id} onChange={e => setForm({...form, parceiro_id: e.target.value})} className="w-full p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
+                             <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Dupla / Parceiro Fixo</label>
+                             <select value={form.parceiro_id} onChange={e => setForm({...form, parceiro_id: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 text-sm text-gray-900 focus:border-blue-600 outline-none transition">
                                 <option value="">Nenhum</option>
                                 {acolitos.filter(a => a.id !== editingId).map(a => <option key={a.id} value={a.id}>{a.nome} {a.sobrenome}</option>)}
                              </select>
@@ -327,11 +576,11 @@ export default function AcolitosPage() {
 
                   {/* Acessos Específicos (Admin) */}
                   {userRole === 'admin' && (
-                      <div className="space-y-2">
-                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={10}/> Módulos Liberados</span>
+                      <div className="space-y-3 pt-2">
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={12}/> Módulos Liberados</span>
                         <div className="flex flex-wrap gap-2">
                             {MODULES.map(mod => (
-                                <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition ${form.acessos.includes(mod.id) ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}>
+                                <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${form.acessos.includes(mod.id) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
                                     {mod.label}
                                 </button>
                             ))}
@@ -340,8 +589,8 @@ export default function AcolitosPage() {
                   )}
               </div>
 
-              <div className="p-6 border-t border-zinc-800 bg-zinc-900 sticky bottom-0 z-10">
-                  <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition flex items-center justify-center gap-2">
+              <div className="p-6 border-t border-gray-100 bg-gray-50/80 sticky bottom-0 z-10 rounded-b-3xl">
+                  <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2">
                       <Save size={20} /> {editingId ? 'Salvar Alterações' : 'Cadastrar Membro'}
                   </button>
               </div>
@@ -349,147 +598,12 @@ export default function AcolitosPage() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 flex items-center justify-between px-4 md:px-8 z-40">
-        <div className="flex items-center gap-4">
-            <Link href="/" className="w-10 h-10 flex items-center justify-center hover:bg-zinc-800 rounded-full text-zinc-400 transition"><ArrowLeft size={20}/></Link>
-            <div>
-                <h1 className="text-lg font-bold text-white leading-none">Gestão de Equipe</h1>
-                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Acólitos & Cerimoniários</span>
-            </div>
-        </div>
-        <div className="flex items-center gap-3">
-             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-400">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {acolitos.length} Membros
-             </div>
-        </div>
-      </header>
-
-      {/* Conteúdo Principal */}
-      <main className="pt-24 pb-10 px-4 md:px-8 max-w-[1600px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
-            
-            <div className="space-y-6">
-                <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-zinc-900 p-2 rounded-xl border border-zinc-800">
-                    <div className="relative w-full md:w-96">
-                        <Search className="absolute left-3 top-2.5 text-zinc-500" size={16}/>
-                        <input 
-                            placeholder="Buscar por nome..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-zinc-950 text-white text-sm pl-9 pr-4 py-2 rounded-lg border border-zinc-800 outline-none focus:border-blue-500 transition"
-                        />
-                    </div>
-                    <button onClick={openNewForm} className="w-full md:w-auto px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition active:scale-95 shadow-lg shadow-blue-900/20">
-                        <Plus size={18}/> Novo Acólito
-                    </button>
-                </div>
-
-                {loading ? (
-                    <div className="text-center py-20 text-zinc-500 animate-pulse">Carregando equipe...</div>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                        {filteredAcolitos.map((acolito) => (
-                            <div key={acolito.id} onClick={() => handleEdit(acolito)} 
-                                 className={`group relative bg-zinc-900 hover:bg-zinc-800/80 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden
-                                 ${!acolito.ativo ? 'opacity-60 grayscale' : 'border-zinc-800 hover:border-blue-500/30'}`}>
-                                
-                                <div className="p-4 pb-12"> 
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-900/20">
-                                                {acolito.nome?.substring(0,2).toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-white text-sm leading-tight group-hover:text-blue-400 transition-colors">{acolito.nome} {acolito.sobrenome}</h3>
-                                                <div className="flex items-center gap-1 mt-0.5">
-                                                    {acolito.perfil !== 'padrao' && <span className="text-[8px] font-black text-purple-400 bg-purple-500/10 px-1 rounded uppercase flex items-center gap-0.5"><Shield size={8}/> {acolito.perfil}</span>}
-                                                    {acolito.parceiro_id && <span className="text-[8px] font-black text-pink-400 bg-pink-500/10 px-1 rounded flex items-center gap-0.5"><Heart size={8}/> Dupla</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(e, acolito.id); }} className="p-2 text-zinc-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
-                                            <Trash2 size={16}/>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Ações rápidas no hover */}
-                                <div className="absolute bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 h-10 flex items-center justify-around translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-10 shadow-2xl">
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title="FDS" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.apenas_fim_de_semana ? 'text-yellow-400' : 'text-zinc-600'}`}><CalendarClock size={16}/></button>
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.manuseia_missal ? 'text-blue-400' : 'text-zinc-600'}`}><BookOpen size={16}/></button>
-                                    <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.manuseia_turibulo ? 'text-orange-400' : 'text-zinc-600'}`}><Flame size={16}/></button>
-                                    <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} title="Status" className={`flex-1 h-full flex justify-center items-center transition hover:bg-zinc-900 ${acolito.ativo ? 'text-green-500' : 'text-red-500'}`}><CheckCircle2 size={16}/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Sidebar de Aniversariantes */}
-            <aside className="hidden lg:block sticky top-24 space-y-4">
-                <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl">
-                    <div className="p-4 bg-zinc-950/50 border-b border-zinc-800 flex items-center gap-2">
-                        <Cake size={16} className="text-pink-500" />
-                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-zinc-500">Aniversariantes</h3>
-                    </div>
-
-                    <div className="p-3 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                        {/* Hoje */}
-                        {hoje.length > 0 && (
-                            <div className="space-y-2">
-                                <span className="text-[10px] font-bold text-pink-500 uppercase ml-1">Aniversário do Dia</span>
-                                {hoje.map(aniv => (
-                                    <div key={aniv.id} className="bg-gradient-to-br from-pink-500/20 to-violet-500/10 border border-pink-500/40 p-3 rounded-xl flex items-center gap-3">
-                                        <div className="flex flex-col items-center justify-center bg-pink-500 text-white w-10 h-10 rounded-lg shrink-0 shadow-lg shadow-pink-500/20">
-                                            <span className="text-sm font-black leading-none">{aniv.dia}</span>
-                                            <span className="text-[8px] uppercase font-bold">{aniv.mesNome}</span>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-bold text-white truncate">{aniv.nome}</p>
-                                            <span className="text-[10px] text-pink-400 flex items-center gap-1 animate-pulse">
-                                                <PartyPopper size={10}/> Parabéns!
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Próximos */}
-                        <div className="space-y-2">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase ml-1">Próximos</span>
-                            {proximos.length === 0 && hoje.length === 0 ? (
-                                <p className="text-xs text-zinc-600 p-4 text-center italic">Nenhum aniversário próximo.</p>
-                            ) : (
-                                proximos.map(aniv => (
-                                    <div key={aniv.id} className="flex items-center gap-3 p-2 hover:bg-zinc-800/50 rounded-xl transition-colors group">
-                                        <div className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-800 text-zinc-400 w-9 h-9 rounded-lg shrink-0 group-hover:border-zinc-600 transition-colors">
-                                            <span className="text-xs font-bold leading-none">{aniv.dia}</span>
-                                            <span className="text-[7px] uppercase font-bold">{aniv.mesNome}</span>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-xs font-semibold text-zinc-300 group-hover:text-white truncate transition-colors">
-                                                {aniv.nome} {aniv.sobrenome}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-        </div>
-      </main>
-      
+      {/* Ajuste simples da Scrollbar para o Sidebar de Aniversariantes */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #52525b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
       `}</style>
     </div>
   )
