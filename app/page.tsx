@@ -12,13 +12,13 @@ import {
   Search, DollarSign, Flame, BookOpen, FolderClock, Menu
 } from 'lucide-react'
 
-const APP_VERSION = "v3.88.0-ui-folder-light" 
+const APP_VERSION = "v3.89.0-ui-folder-light" 
 
 const RELEASE_NOTES = [
     "UI: Novo layout com menu vertical.",
     "Tema: Aplicação do Modo Claro em todo o sistema.",
     "Gerador: Escalas puramente proporcionais (por mês), sem usar histórico antigo.",
-    "Gerador: Nova opção para não escalar acólitos durante a semana."
+    "Gerador: Nova opção para Novena Nsa. Sra. Desatadora dos Nós (1 acólito, segundas 19h30)."
 ]
 
 interface NewEscala {
@@ -176,7 +176,8 @@ export default function Home() {
   const [clearBeforeGenerate, setClearBeforeGenerate] = useState(true)
   const [includeDay19, setIncludeDay19] = useState(true)
   const [singleAcolyteWeekdays, setSingleAcolyteWeekdays] = useState(false)
-  const [noWeekdays, setNoWeekdays] = useState(false) // NOVA OPÇÃO
+  const [noWeekdays, setNoWeekdays] = useState(false)
+  const [mondayNovena, setMondayNovena] = useState(false) // OPÇÃO NOVENA SEGUNDA-FEIRA
 
   const [formData, setFormData] = useState({
     date: '', time: '', place: PLACES[0], obs: '',
@@ -340,7 +341,6 @@ export default function Home() {
         const fixedRules = fixedRulesData || []; 
         const excludedDays: number[] = [] 
 
-        // MAPA DE USO ZERADO - Foca 100% na proporcionalidade dentro do mês atual (esquecendo memória passada)
         const usageMap: { [key: string]: number } = {}
         dbAcolitos.forEach(a => usageMap[a.nome] = 0)
 
@@ -386,7 +386,6 @@ export default function Home() {
                         if (a.parceiro_id && team.length + 1 >= targetSize) return false 
                         return true
                     })
-                    // AQUI GARANTE A PROPORCIONALIDADE: Quem serviu menos entra no topo da fila
                     .sort((a, b) => (usageMap[a.nome] || 0) - (usageMap[b.nome] || 0) || (Math.random() - 0.5))
 
                 let selected = false;
@@ -432,9 +431,11 @@ export default function Home() {
             const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
             const weekDay = utcDate.getUTCDay(); 
 
-            // SE MARCOU PARA NÃO TER DURANTE A SEMANA (exceto especiais dia 15 e 19)
+            // SE MARCOU PARA NÃO TER DURANTE A SEMANA (exceto dias 15, 19 e Novena de Segunda)
             if (noWeekdays && weekDay >= 1 && weekDay <= 5 && day !== 19 && day !== 15) {
-                continue; 
+                if (!(mondayNovena && weekDay === 1)) {
+                    continue; 
+                }
             }
 
             let dayTimes: string[] = []
@@ -460,6 +461,14 @@ export default function Home() {
                     }
 
                     if (singleAcolyteWeekdays && (weekDay === 3 || weekDay === 5)) teamSize = 1;
+
+                    // LÓGICA DA NOVENA DESATADORA DE NÓS (Segunda-feira)
+                    if (mondayNovena && weekDay === 1 && time === '19:30') {
+                        teamSize = 1;
+                        obs = 'Novena Perpétua a Nsa. Sra. Desatadora dos Nós';
+                        local = PLACES[0]; 
+                    }
+
                     if (day === 19 && local === PLACES[0]) { obs = 'Missa Votiva de São José'; teamSize = includeTuribuloDay19 ? 4 : 2; }
                     if (day === 15 && local === PLACES[2]) { obs = 'Missa Votiva Nsa. Sra. da Abadia'; teamSize = 2; }
 
@@ -1027,12 +1036,20 @@ export default function Home() {
                             </div>
                         </div>
 
-                        {/* NOVA OPÇÃO SOLICITADA */}
+                        {/* OPÇÃO SOLICITADA - NOVENA */}
+                        <div className="flex items-start gap-2 pt-2 border-t border-gray-200 mt-2">
+                            <input type="checkbox" checked={mondayNovena} onChange={e => setMondayNovena(e.target.checked)} className="mt-0.5 accent-purple-500"/>
+                            <div className="text-xs text-gray-600">
+                                <span className="font-bold block text-purple-700">Novena (Segunda-feira)</span>
+                                Escala apenas 1 acólito nas missas de segunda às 19h30 (Novena Perpétua a Nsa. Sra. Desatadora dos Nós).
+                            </div>
+                        </div>
+
                         <div className="flex items-start gap-2 pt-2 border-t border-gray-200 mt-2">
                             <input type="checkbox" checked={noWeekdays} onChange={e => setNoWeekdays(e.target.checked)} className="mt-0.5 accent-red-600"/>
                             <div className="text-xs text-gray-600">
                                 <span className="font-bold block text-red-600">Sem acólitos na semana</span>
-                                Não gera escalas para missas de segunda a sexta (exceto em dias especiais como 15 e 19).
+                                Não gera escalas para missas de segunda a sexta (exceto dias especiais e Novena).
                             </div>
                         </div>
                         

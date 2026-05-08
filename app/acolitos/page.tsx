@@ -6,13 +6,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { 
   Menu, X, LogOut, Users, DollarSign, ClipboardList, Settings, ChevronLeft,
-  ArrowLeft, Save, Trash2, User, CheckCircle2, XCircle, Edit2, 
+  ArrowLeft, Save, Trash2, User, CheckCircle2, Edit2, 
   Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, 
-  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole, Download
+  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole, Download, FileText
 } from 'lucide-react'
 
 // Constante de Versão
-const APP_VERSION = "v3.87.0-ui-folder-light" 
+const APP_VERSION = "v3.90.0-ui-folder-light" 
 
 // --- Tipos e Interfaces ---
 interface AlertState {
@@ -42,6 +42,16 @@ export default function AcolitosPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+
+  // Estados dos Relatórios
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false)
+  const [reportTab, setReportTab] = useState<'niver' | 'dados'>('niver')
+  const [reportCols, setReportCols] = useState({
+      telefone: true,
+      usuario: true,
+      perfil: true,
+      liturgia: true
+  })
 
   const [customAlert, setCustomAlert] = useState<AlertState>({
       isOpen: false, type: 'success', title: '', message: ''
@@ -135,10 +145,6 @@ export default function AcolitosPage() {
     if (v.length > 2) v = v.replace(/^(\d{2})(\d)/, '$1/$2')
     setForm({...form, data_nascimento: v})
   }
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let v = e.target.value.replace(/\D/g, ''); if(v.length>11)v=v.slice(0,11); v=v.replace(/^(\d{2})(\d)/g,'($1) $2'); v=v.replace(/(\d)(\d{4})$/,'$1-$2'); setForm({...form, telefone: v})
-  }
   
   const toggleAccess = (moduleId: string) => {
       setForm(prev => {
@@ -229,6 +235,127 @@ export default function AcolitosPage() {
             closeAlert() 
         } catch (e: any) { triggerAlert('Erro', e.message, 'error') }
     })
+  }
+
+  // --- LÓGICA DOS RELATÓRIOS PDF ---
+  const generateBirthdayReport = async () => {
+      triggerAlert("Aguarde", "Gerando PDF de aniversariantes...", "info");
+      const jsPDF = (await import('jspdf')).default;
+      const doc = new jsPDF('p', 'mm', 'a4');
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("RELATÓRIO DE ANIVERSARIANTES", 105, 20, { align: "center" });
+
+      const mesesStr = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+      let y = 35;
+
+      mesesStr.forEach((mesNome, index) => {
+          const mesNum = index + 1;
+          const aniversariantesMes = acolitos.filter(a => {
+              if(!a.data_nascimento) return false;
+              const m = parseInt(a.data_nascimento.split('-')[1]);
+              return m === mesNum;
+          }).sort((a, b) => a.nome.localeCompare(b.nome));
+
+          if(aniversariantesMes.length > 0) {
+              if(y > 270) { doc.addPage(); y = 20; }
+              doc.setFillColor(240, 240, 240);
+              doc.rect(10, y-5, 190, 8, 'F');
+              doc.setFont("helvetica", "bold");
+              doc.setFontSize(11);
+              doc.setTextColor(0, 0, 0);
+              doc.text(mesNome.toUpperCase(), 15, y);
+              y += 8;
+
+              doc.setFont("helvetica", "normal");
+              doc.setFontSize(10);
+              aniversariantesMes.forEach(a => {
+                  if(y > 280) { doc.addPage(); y = 20; }
+                  const dia = a.data_nascimento.split('-')[2];
+                  doc.text(`Dia ${dia} - ${a.nome} ${a.sobrenome || ''}`, 20, y);
+                  y += 6;
+              });
+              y += 4;
+          }
+      });
+      doc.save("aniversariantes_equipe.pdf");
+      setIsReportModalOpen(false);
+      closeAlert();
+  }
+
+  const generateDataReport = async () => {
+      triggerAlert("Aguarde", "Gerando PDF de dados cadastrais...", "info");
+      const jsPDF = (await import('jspdf')).default;
+      const doc = new jsPDF('l', 'mm', 'a4'); // Paisagem para caber colunas
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("RELATÓRIO CADASTRAL - EQUIPE", 148.5, 20, { align: "center" });
+
+      let y = 35;
+      doc.setFontSize(9);
+
+      // Definição dinâmica de colunas
+      let currentX = 10;
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(230, 230, 230);
+      doc.rect(10, y-5, 277, 8, 'F');
+
+      const cols = [{ label: "NOME", width: 70, key: 'nome' }];
+      if(reportCols.telefone) cols.push({ label: "TELEFONE", width: 35, key: 'telefone' });
+      if(reportCols.usuario) cols.push({ label: "USUÁRIO", width: 35, key: 'usuario' });
+      if(reportCols.perfil) cols.push({ label: "PERFIL", width: 30, key: 'perfil' });
+      if(reportCols.liturgia) cols.push({ label: "LITURGIA (FUNÇÕES)", width: 60, key: 'liturgia' });
+
+      // O nome pega o espaço que sobrar
+      const usedWidth = cols.reduce((sum, c) => sum + c.width, 0) - 70;
+      cols[0].width = 277 - usedWidth;
+
+      cols.forEach(c => {
+          doc.text(c.label, currentX + 2, y);
+          currentX += c.width;
+      });
+      y += 8;
+
+      doc.setFont("helvetica", "normal");
+      const listToPrint = [...acolitos].sort((a, b) => a.nome.localeCompare(b.nome));
+
+      listToPrint.forEach((ac, idx) => {
+          if(y > 190) { doc.addPage(); y = 20; }
+          if(idx % 2 === 0) {
+             doc.setFillColor(250, 250, 250);
+             doc.rect(10, y-4, 277, 6, 'F');
+          }
+
+          let cx = 10;
+          cols.forEach(c => {
+              let text = "";
+              if(c.key === 'nome') text = `${ac.nome} ${ac.sobrenome || ''}`;
+              if(c.key === 'telefone') text = ac.telefone || '-';
+              if(c.key === 'usuario') text = ac.usuario || '-';
+              if(c.key === 'perfil') text = ac.perfil.toUpperCase();
+              if(c.key === 'liturgia') {
+                  let parts = [];
+                  if(ac.manuseia_missal) parts.push('Missal');
+                  if(ac.manuseia_turibulo) parts.push('Turíbulo');
+                  if(ac.apenas_fim_de_semana) parts.push('Só FDS');
+                  text = parts.length > 0 ? parts.join(', ') : 'Padrão';
+              }
+
+              // Truncar para não invadir coluna vizinha (aproximado)
+              const maxChars = Math.floor(c.width / 2); 
+              if(text.length > maxChars) text = text.substring(0, maxChars-3) + '...';
+
+              doc.text(text, cx + 2, y);
+              cx += c.width;
+          });
+          y += 6;
+      });
+
+      doc.save("dados_cadastrais_equipe.pdf");
+      setIsReportModalOpen(false);
+      closeAlert();
   }
 
   const filteredAcolitos = acolitos.filter(a => 
@@ -369,9 +496,14 @@ export default function AcolitosPage() {
                         />
                     </div>
                     {canManage && (
-                        <button onClick={openNewForm} className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20">
-                            <Plus size={18}/> Novo Acólito
-                        </button>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <button onClick={() => setIsReportModalOpen(true)} className="flex-1 sm:w-auto px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
+                                <FileText size={18}/> <span className="hidden sm:inline">Relatórios</span>
+                            </button>
+                            <button onClick={openNewForm} className="flex-1 sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20">
+                                <Plus size={18}/> <span className="hidden sm:inline">Novo Acólito</span><span className="sm:hidden">Novo</span>
+                            </button>
+                        </div>
                     )}
                 </div>
 
@@ -479,6 +611,72 @@ export default function AcolitosPage() {
             </aside>
         </div>
       </main>
+
+      {/* --- MODAL DE RELATÓRIOS --- */}
+      {isReportModalOpen && (
+          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+              <div className="bg-white border border-gray-200 w-full max-w-md rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                      <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900">
+                          <FileText size={20} className="text-blue-600"/> Gerar Relatórios
+                      </h2>
+                      <button onClick={() => setIsReportModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                      {/* Abas de Escolha */}
+                      <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                          <button onClick={() => setReportTab('niver')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${reportTab === 'niver' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Aniversariantes</button>
+                          <button onClick={() => setReportTab('dados')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${reportTab === 'dados' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Dados Cadastrais</button>
+                      </div>
+
+                      {/* Conteúdo Aba Aniversários */}
+                      {reportTab === 'niver' && (
+                          <div className="space-y-4">
+                              <p className="text-sm text-gray-600 leading-relaxed">Gera uma lista elegante com as datas de aniversário de todos os membros ativos da equipe, separada por mês.</p>
+                              <button onClick={generateBirthdayReport} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2">
+                                  <Download size={18} /> Baixar PDF
+                              </button>
+                          </div>
+                      )}
+
+                      {/* Conteúdo Aba Dados Cadastrais */}
+                      {reportTab === 'dados' && (
+                          <div className="space-y-5">
+                              <div>
+                                  <p className="text-xs text-gray-500 font-bold uppercase tracking-wide mb-3">Quais dados incluir no PDF?</p>
+                                  <div className="grid grid-cols-2 gap-3">
+                                      <label className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition">
+                                          <input type="checkbox" checked disabled className="w-4 h-4 accent-blue-600 rounded"/>
+                                          <span className="text-sm font-bold text-gray-900">Nome</span>
+                                      </label>
+                                      <label className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition">
+                                          <input type="checkbox" checked={reportCols.telefone} onChange={e => setReportCols({...reportCols, telefone: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                                          <span className="text-sm font-medium text-gray-700">Telefone</span>
+                                      </label>
+                                      <label className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition">
+                                          <input type="checkbox" checked={reportCols.usuario} onChange={e => setReportCols({...reportCols, usuario: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                                          <span className="text-sm font-medium text-gray-700">Usuário</span>
+                                      </label>
+                                      <label className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition">
+                                          <input type="checkbox" checked={reportCols.perfil} onChange={e => setReportCols({...reportCols, perfil: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                                          <span className="text-sm font-medium text-gray-700">Perfil</span>
+                                      </label>
+                                      <label className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 transition col-span-2">
+                                          <input type="checkbox" checked={reportCols.liturgia} onChange={e => setReportCols({...reportCols, liturgia: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                                          <span className="text-sm font-medium text-gray-700">Liturgia (Missal / Turíbulo / FDS)</span>
+                                      </label>
+                                  </div>
+                              </div>
+                              <button onClick={generateDataReport} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2">
+                                  <Download size={18} /> Baixar PDF
+                              </button>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* --- MODAL DE CADASTRO/EDIÇÃO (LIGHT MODE) --- */}
       {isFormOpen && (
@@ -598,7 +796,7 @@ export default function AcolitosPage() {
         </div>
       )}
 
-      {/* Ajuste simples da Scrollbar para o Sidebar de Aniversariantes */}
+      {/* Ajuste simples da Scrollbar */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
