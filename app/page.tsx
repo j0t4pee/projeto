@@ -9,7 +9,7 @@ import {
   Filter, Eye, ChevronDown, Calendar as CalendarIcon, 
   Wand2, ChevronLeft, ChevronRight, CheckCircle2, 
   AlertCircle, Info, Download, AlertTriangle, Search, 
-  Sparkles, BookOpen, ShieldCheck, Users, Flame, Palette, CalendarOff, Eraser
+  Sparkles, BookOpen, ShieldCheck, Users, Flame, Palette, CalendarOff, Eraser, Settings
 } from 'lucide-react'
 
 // --- Funções de Conversão de Cor para o PDF ---
@@ -96,7 +96,7 @@ const MemoizedCalendar = React.memo(({
         <div className="bg-white border border-gray-200 rounded-3xl p-4 w-full shadow-sm">
             <div className="flex justify-between items-center mb-3">
                 <button onClick={() => setDate(new Date(year, month - 1, 1))} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronLeft size={16}/></button>
-                <span className="text-sm font-bold capitalize text-gray-900 tracking-wide">{currentDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</span>
+                <span className="text-xs font-bold capitalize text-gray-900 tracking-wide">{currentDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</span>
                 <button onClick={() => setDate(new Date(year, month + 1, 1))} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronRight size={16}/></button>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center">
@@ -497,7 +497,7 @@ export default function Home() {
         const year = refDate.getFullYear()
 
         doc.setFont("helvetica", "bold").setFontSize(14)
-        doc.text(`Escala Mensal de ${monthName} / ${year}`, 105, 15, { align: "center" })
+        doc.text(`ESCALA MENSAL - ${monthName} / ${year}`, 105, 15, { align: "center" })
 
         const startX = 10; const startY = 25; const boxWidth = 46; const boxHeight = 26; const gap = 2; const columns = 4;
         let cursorX = startX; let cursorY = startY;
@@ -593,7 +593,9 @@ export default function Home() {
               <Download size={18} className="text-blue-600"/> Baixar Escala
           </button>
           
-          
+          <button onClick={() => setIsRulesLocalModalOpen(true)} className="w-full mt-2 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-bold transition shadow-sm">
+              <BookOpen size={18} className="text-purple-600"/> Regras do Gerador
+          </button>
           
           <button onClick={() => setIsNotesModalOpen(true)} className="w-full mt-2 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-bold transition shadow-sm">
               <Sparkles size={18} className="text-amber-500"/> Notas da Versão
@@ -639,10 +641,11 @@ export default function Home() {
       <MainLayout userProfile={userProfile} onLogout={handleLogout} customSidebarContent={homeSidebarExtras}>
           <main className="px-4 py-8 max-w-7xl mx-auto w-full pt-20 lg:pt-8 animate-in fade-in duration-500">
               
+              {/* Novo Cabeçalho da Página Principal */}
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
                   <div>
                       <div className="flex items-center gap-3">
-                          <h2 className="text-2xl font-bold text-gray-900 leading-tight">Painel de Escalas</h2>
+                          <h2 className="text-xl font-bold text-gray-900 leading-tight">Painel de Escalas</h2>
                           <button onClick={() => setIsNotesModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-full text-[10px] font-bold uppercase tracking-wider transition">
                               <Sparkles size={12}/> Ver Novidades
                           </button>
@@ -655,7 +658,7 @@ export default function Home() {
                   
                   {/* Coluna Lateral da Home */}
                   <div className="lg:col-span-1 space-y-6">
-                      <div className="lg:sticky lg:top-8 space-y-6">
+                      <div className="lg:sticky lg:top-8 space-y-5">
                           <MemoizedCalendar 
                             currentDate={calendarDate} setDate={setCalendarDate}
                             rawEvents={rawEvents} filterDate={filterDate} setFilterDate={setFilterDate}
@@ -663,25 +666,25 @@ export default function Home() {
 
                           {/* BOTÕES DE AÇÃO NA COLUNA LATERAL */}
                           {canManage && (
-                              <div className="flex flex-col gap-3">
-                                  <button onClick={openNewForm} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-blue-600/20 active:scale-95">
-                                      <Plus size={18}/> Nova Missa
+                              <div className="flex flex-col gap-2.5">
+                                  <button onClick={openNewForm} className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-blue-600/20 active:scale-95">
+                                      <Plus size={16}/> Nova Missa
                                   </button>
-                                  <button onClick={() => setIsAutoModalOpen(true)} className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20 active:scale-95">
-                                      <Wand2 size={18}/> Gerar Escalas
+                                  <button onClick={() => setIsAutoModalOpen(true)} className="w-full h-10 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20 active:scale-95">
+                                      <Wand2 size={16}/> Gerar Escalas
                                   </button>
                               </div>
                           )}
 
-                          <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
-                              <div className="flex bg-gray-100 p-1.5 rounded-xl border border-gray-200">
-                                  <button onClick={() => setActiveTab('upcoming')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Próximas</button>
-                                  <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Histórico</button>
+                          <div className="bg-white border border-gray-200 rounded-3xl p-4 shadow-sm space-y-4">
+                              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                                  <button onClick={() => setActiveTab('upcoming')} className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Próximas</button>
+                                  <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Histórico</button>
                               </div>
 
-                              <div className="space-y-3">
+                              <div className="space-y-2.5">
                                   <div className="relative">
-                                      <select value={selectedPlace} onChange={e => setSelectedPlace(e.target.value)} className="w-full h-10 pl-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700 focus:bg-white focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-100 transition">
+                                      <select value={selectedPlace} onChange={e => setSelectedPlace(e.target.value)} className="w-full h-9 pl-3 pr-8 rounded-lg bg-gray-50 border border-gray-200 text-[11px] font-medium text-gray-700 focus:bg-white focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-100 transition">
                                           <option value="">Todas as Igrejas</option>
                                           {PLACES.map(p => <option key={p} value={p}>{p.replace('Rainha da Paz (Matriz)', 'Matriz')}</option>)}
                                       </select>
@@ -692,7 +695,7 @@ export default function Home() {
                                       <select 
                                         value={selectedAcolyte} 
                                         onChange={e => { setSelectedAcolyte(e.target.value); setShowOnlyMyScales(false); }} 
-                                        className="w-full h-10 pl-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700 focus:bg-white focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-100 transition"
+                                        className="w-full h-9 pl-3 pr-8 rounded-lg bg-gray-50 border border-gray-200 text-[11px] font-medium text-gray-700 focus:bg-white focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-100 transition"
                                       >
                                           <option value="">Filtrar Acólito...</option>
                                           {dbAcolitos.map(a => {
@@ -704,14 +707,14 @@ export default function Home() {
                                   </div>
                               </div>
 
-                              <button onClick={() => { setShowOnlyMyScales(!showOnlyMyScales); setSelectedAcolyte('') }} className={`w-full h-10 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${showOnlyMyScales ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
+                              <button onClick={() => { setShowOnlyMyScales(!showOnlyMyScales); setSelectedAcolyte('') }} className={`w-full h-9 px-3 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-2 transition ${showOnlyMyScales ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
                                   {showOnlyMyScales ? <Eye size={16}/> : <Filter size={16}/>} Minhas Escalas
                               </button>
                               
                               {(showOnlyMyScales || selectedAcolyte) && (
                                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
                                       <span className="text-[10px] text-blue-600 font-bold block uppercase tracking-wider">Missas Encontradas</span>
-                                      <span className="text-2xl font-black text-gray-900 block mt-1">{filteredEvents.length}</span>
+                                      <span className="text-xl font-black text-gray-900 block mt-1">{filteredEvents.length}</span>
                                   </div>
                               )}
                           </div>
@@ -752,8 +755,8 @@ export default function Home() {
                                                   {/* Lado Esquerdo: Data e Cor */}
                                                   <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center sm:w-20 shrink-0 border-b sm:border-b-0 sm:border-r border-gray-100 pb-3 sm:pb-0 sm:pr-4">
                                                       <div className="flex flex-col items-center">
-                                                          <span className="text-3xl font-black text-gray-900 tracking-tight">{day}</span>
-                                                          <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">{date.toLocaleDateString('pt-BR', {month:'short'}).replace('.','')}</span>
+                                                          <span className="text-2xl font-black text-gray-900 tracking-tight">{day}</span>
+                                                          <span className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">{date.toLocaleDateString('pt-BR', {month:'short'}).replace('.','')}</span>
                                                       </div>
                                                       {evt.cor && evt.cor !== '#e5e7eb' && (
                                                           <div className="w-3 h-3 rounded-full shadow-sm mt-0 sm:mt-3 border border-black/10" style={{ backgroundColor: evt.cor }} title="Cor de impressão"></div>
@@ -764,13 +767,13 @@ export default function Home() {
                                                   <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                       <div className="flex justify-between items-start mb-3">
                                                           <div>
-                                                              <h3 className="font-bold text-gray-900 text-lg leading-none mb-2">{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
+                                                              <h3 className="font-bold text-gray-900 text-base leading-none mb-2">{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
                                                               <div className="flex items-center gap-2 flex-wrap">
-                                                                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1.5">
+                                                                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1.5">
                                                                       <Clock size={12}/> {evt.hora.substring(0,5)}
                                                                   </span>
                                                                   {evt.observacao && (
-                                                                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg truncate max-w-[200px]" title={evt.observacao}>
+                                                                      <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg truncate max-w-[200px]" title={evt.observacao}>
                                                                           {evt.observacao}
                                                                       </span>
                                                                   )}
@@ -790,8 +793,8 @@ export default function Home() {
                                                       <div className="flex flex-wrap gap-2">
                                                           {evt.acolitos.map((ac: any, idx: number) => (
                                                               <div key={idx} className="bg-gray-50 border border-gray-200/60 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-sm">
-                                                                  <span className="text-xs font-bold text-gray-700">{ac.nome.split(' ')[0]} {ac.nome.split(' ').length > 1 ? ac.nome.split(' ')[1].charAt(0) + '.' : ''}</span>
-                                                                  <span className="text-[9px] font-bold text-blue-600 bg-blue-100/50 px-1.5 py-0.5 rounded uppercase tracking-wider">{ROLE_SIGLA[ac.funcao] || 'A'}</span>
+                                                                  <span className="text-[11px] font-bold text-gray-700">{ac.nome.split(' ')[0]} {ac.nome.split(' ').length > 1 ? ac.nome.split(' ')[1].charAt(0) + '.' : ''}</span>
+                                                                  <span className="text-[8px] font-bold text-blue-600 bg-blue-100/50 px-1.5 py-0.5 rounded uppercase tracking-wider">{ROLE_SIGLA[ac.funcao] || 'A'}</span>
                                                               </div>
                                                           ))}
                                                       </div>
@@ -827,7 +830,7 @@ export default function Home() {
                     <div className="space-y-6">
                         <div className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
                             <div>
-                                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Mês de Referência</label>
+                                <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider block mb-2">Mês de Referência</label>
                                 <input type="month" value={autoGenMonth} onChange={e => setAutoGenMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition shadow-sm" />
                             </div>
                             
@@ -882,29 +885,30 @@ export default function Home() {
                  <div className="p-6 space-y-5">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Data</label>
-                            <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
+                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Data</label>
+                            <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Hora</label>
-                            <input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
+                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Hora</label>
+                            <input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Local</label>
-                        <select value={formData.place} onChange={e => setFormData({...formData, place: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition">
+                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Local</label>
+                        <select value={formData.place} onChange={e => setFormData({...formData, place: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition">
                             {PLACES.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                     </div>
                     
                     <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Observação</label>
-                            <input type="text" value={formData.obs} onChange={e => setFormData({...formData, obs: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" placeholder="Opcional. Ex: Solenidade de Páscoa" />
+                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Observação</label>
+                            <input type="text" value={formData.obs} onChange={e => setFormData({...formData, obs: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" placeholder="Opcional. Ex: Solenidade de Páscoa" />
                         </div>
                         
+                        {/* Seletor de Cores Simplificado */}
                         <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
-                            <label className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3 block text-center">Cor do Relatório PDF</label>
+                            <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-3 block text-center">Cor do Relatório PDF</label>
                             <div className="grid grid-cols-4 gap-2">
                                 <button type="button" onClick={() => setFormData({...formData, cor: '#e5e7eb'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#e5e7eb' ? 'bg-white border-gray-400 shadow-sm ring-1 ring-gray-400 scale-105' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
                                     <div className="w-6 h-6 rounded-full bg-gray-200 border border-gray-300 mb-1"></div>
@@ -936,7 +940,7 @@ export default function Home() {
                         <div className="space-y-3">
                             {formData.acolitos.map((acolito, idx) => (
                                 <div key={idx} className="flex flex-col sm:flex-row gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
-                                    <select value={acolito.nome} onChange={e => updateAcolito(idx, 'nome', e.target.value)} className="w-full sm:flex-1 bg-white border border-gray-300 rounded-lg p-3 text-sm text-gray-900 outline-none focus:border-blue-600">
+                                    <select value={acolito.nome} onChange={e => updateAcolito(idx, 'nome', e.target.value)} className="w-full sm:flex-1 bg-white border border-gray-300 rounded-lg p-2.5 text-[11px] text-gray-900 outline-none focus:border-blue-600">
                                         <option value="">Selecione...</option>
                                         {dbAcolitos.map(a => {
                                             const nome = `${a.nome} ${a.sobrenome || ''}`.trim();
@@ -944,11 +948,11 @@ export default function Home() {
                                         })}
                                     </select>
                                     <div className="flex gap-2 w-full sm:w-auto">
-                                        <select value={acolito.funcao} onChange={e => updateAcolito(idx, 'funcao', e.target.value)} className="flex-1 sm:w-32 bg-white border border-gray-300 rounded-lg p-3 text-xs font-medium text-gray-900 outline-none focus:border-blue-600">
+                                        <select value={acolito.funcao} onChange={e => updateAcolito(idx, 'funcao', e.target.value)} className="flex-1 sm:w-28 bg-white border border-gray-300 rounded-lg p-2.5 text-[11px] font-medium text-gray-900 outline-none focus:border-blue-600">
                                             {ROLES.map(r => <option key={r}>{r}</option>)}
                                             <option>Auxiliar</option>
                                         </select>
-                                        <button onClick={() => setFormData({...formData, acolitos: formData.acolitos.filter((_, i) => i !== idx)})} className="p-3 bg-white border border-gray-200 hover:bg-red-50 text-gray-400 hover:text-red-500 hover:border-red-200 rounded-lg transition shrink-0"><Trash2 size={16}/></button>
+                                        <button onClick={() => setFormData({...formData, acolitos: formData.acolitos.filter((_, i) => i !== idx)})} className="p-2.5 bg-white border border-gray-200 hover:bg-red-50 text-gray-400 hover:text-red-500 hover:border-red-200 rounded-lg transition shrink-0"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -957,8 +961,8 @@ export default function Home() {
                  </div>
                  
                  <div className="p-6 border-t border-gray-100 bg-gray-50/80 sticky bottom-0 rounded-b-3xl">
-                     <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2">
-                         <Save size={20}/> Salvar Missa
+                     <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                         <Save size={18}/> Salvar Missa
                      </button>
                  </div>
                </div>
@@ -973,11 +977,11 @@ export default function Home() {
                     <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2"><FileText className="text-blue-600" size={24}/> Baixar Escala</h3>
                     <div className="space-y-6">
                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
-                            <label className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-2">Selecione o Mês</label>
+                            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider block mb-2">Selecione o Mês</label>
                             <input type="month" value={pdfTargetMonth} onChange={e => setPdfTargetMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition shadow-sm" />
                         </div>
-                        <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 active:scale-95">
-                            <Download size={20}/> Gerar Arquivo PDF
+                        <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 active:scale-95 text-sm">
+                            <Download size={18}/> Gerar Arquivo PDF
                         </button>
                     </div>
                 </div>
@@ -1004,6 +1008,13 @@ export default function Home() {
                           </div>
 
                           <div className="space-y-2">
+                              <h4 className="font-bold text-sm text-gray-700 flex items-center gap-1.5"><Trash2 size={16}/> Limpeza de Menus</h4>
+                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-gray-200">
+                                  Os módulos de <strong>Financeiro</strong>, <strong>Atas</strong> e <strong>Escala Complementar</strong> foram removidos do sistema para focar 100% na gestão da equipe e geração automatizada de escalas.
+                              </p>
+                          </div>
+
+                          <div className="space-y-2">
                               <h4 className="font-bold text-sm text-purple-600 flex items-center gap-1.5"><Wand2 size={16}/> Botões Sempre à Mão</h4>
                               <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-purple-100">
                                   Os botões de "Nova Missa" e "Gerar Escalas" agora ficam sempre fixos e visíveis na coluna lateral, logo abaixo do minicalendário. 
@@ -1025,7 +1036,7 @@ export default function Home() {
                           </div>
                       </div>
                       <div className="p-6 border-t border-gray-100 bg-gray-50/80">
-                          <button onClick={() => setIsNotesModalOpen(false)} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl transition active:scale-95">
+                          <button onClick={() => setIsNotesModalOpen(false)} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl transition active:scale-95 text-sm">
                               Entendido, obrigado!
                           </button>
                       </div>
@@ -1096,7 +1107,7 @@ export default function Home() {
                           </div>
                       </div>
                       <div className="p-6 border-t border-gray-100 bg-gray-50/80">
-                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-purple-600/20 active:scale-95">
+                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-purple-600/20 active:scale-95 text-sm">
                               Entendi a Lógica
                           </button>
                       </div>
