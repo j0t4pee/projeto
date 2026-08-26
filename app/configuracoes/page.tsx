@@ -477,14 +477,14 @@ export default function ConfiguracoesPage() {
                                         <div className="flex-1 p-3.5 text-sm flex items-center gap-2">
                                             <CalendarIcon size={16} className={formData.data_inicio ? 'text-blue-600' : 'text-gray-400'}/>
                                             <span className={formData.data_inicio ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
-                                                {formatDisplayDate(formData.data_inicio) || 'Ida'}
+                                                {formatDisplayDate(formData.data_inicio) || 'De'}
                                             </span>
                                         </div>
                                         <div className="w-px h-8 bg-gray-200 shrink-0"></div>
                                         <div className="flex-1 p-3.5 text-sm flex items-center gap-2">
                                             <CalendarIcon size={16} className={formData.data_fim ? 'text-blue-600' : 'text-gray-400'}/>
                                             <span className={formData.data_fim ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
-                                                {formatDisplayDate(formData.data_fim) || 'Volta'}
+                                                {formatDisplayDate(formData.data_fim) || 'Até'}
                                             </span>
                                         </div>
                                     </div>
