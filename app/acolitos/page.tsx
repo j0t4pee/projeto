@@ -1,8 +1,11 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase' 
 import { useRouter } from 'next/navigation'
+// Importações do Firebase substituindo o Supabase
+import { db } from '@/lib/firebase'
+import { collection, getDocs, query, orderBy, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore'
+
 import MainLayout from '@/app/components/MainLayout'
 import { 
   X, LogOut, Users, DollarSign, ClipboardList, Settings, ChevronLeft,
@@ -36,7 +39,8 @@ export default function AcolitosPage() {
   const [acolitos, setAcolitos] = useState<any[]>([])
   const [userRole, setUserRole] = useState('padrao')
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
+  // No Firebase, os IDs são strings (textos)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
   // Estados dos Relatórios
@@ -89,14 +93,20 @@ export default function AcolitosPage() {
   }
   const closeAlert = () => { setCustomAlert({ ...customAlert, isOpen: false, onConfirm: undefined }) }
 
+  // Função adaptada para ler do Firestore
   async function fetchAcolitos() {
     setLoading(true)
     try {
-        const { data, error } = await supabase.from('acolitos').select('*').order('nome', { ascending: true })
-        if (error) throw error
-        if (data) setAcolitos(data)
-    } catch (error) { console.error(error) } 
-    finally { setLoading(false) }
+        const q = query(collection(db, 'acolitos'), orderBy('nome', 'asc'))
+        const querySnapshot = await getDocs(q)
+        const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        setAcolitos(data)
+    } catch (error: any) { 
+        console.error("Erro ao buscar dados:", error)
+        triggerAlert('Erro', 'Não foi possível carregar os dados.', 'error')
+    } finally { 
+        setLoading(false) 
+    }
   }
 
   // --- Lógica de Aniversários OTIMIZADA ---
@@ -177,6 +187,7 @@ export default function AcolitosPage() {
     setIsFormOpen(true)
   }
 
+  // Função adaptada para salvar no Firestore
   async function handleSave() {
     try {
         let dataNascDB = null
@@ -188,15 +199,16 @@ export default function AcolitosPage() {
         const payload = { 
             ...form,
             data_nascimento: dataNascDB,
-            parceiro_id: form.parceiro_id !== '' ? parseInt(form.parceiro_id as string) : null
+            parceiro_id: form.parceiro_id !== '' ? form.parceiro_id : null // Firestore usa IDs em texto
         }
 
         if (editingId) {
-            const { error } = await supabase.from('acolitos').update(payload).eq('id', editingId)
-            if (error) throw error
+            // Atualizar existente
+            const docRef = doc(db, 'acolitos', editingId)
+            await updateDoc(docRef, payload)
         } else {
-            const { error } = await supabase.from('acolitos').insert([{ ...payload, ativo: true }])
-            if (error) throw error
+            // Inserir novo
+            await addDoc(collection(db, 'acolitos'), { ...payload, ativo: true })
         }
 
         setIsFormOpen(false)
@@ -205,35 +217,39 @@ export default function AcolitosPage() {
     } catch (error: any) { triggerAlert('Erro', error.message, 'error') }
   }
 
-  async function toggleStatus(e: any, id: number, statusAtual: boolean) {
+  // Funções de atualização e deleção adaptadas para o Firestore
+  async function toggleStatus(e: any, id: string, statusAtual: boolean) {
     e.stopPropagation(); 
     try { 
-        await supabase.from('acolitos').update({ ativo: !statusAtual }).eq('id', id)
+        const docRef = doc(db, 'acolitos', id)
+        await updateDoc(docRef, { ativo: !statusAtual })
         fetchAcolitos()
     } catch { triggerAlert('Erro', 'Falha ao mudar status.', 'error') }
   }
 
-  async function handleQuickToggle(e: any, id: number, field: string, currentValue: boolean) {
+  async function handleQuickToggle(e: any, id: string, field: string, currentValue: boolean) {
       e.stopPropagation();
       if(userRole !== 'admin' && userRole !== 'diretoria') return;
       try {
-          await supabase.from('acolitos').update({ [field]: !currentValue }).eq('id', id);
+          const docRef = doc(db, 'acolitos', id)
+          await updateDoc(docRef, { [field]: !currentValue })
           fetchAcolitos();
       } catch (err) { triggerAlert('Erro', 'Falha ao atualizar.', 'error'); }
   }
 
-  async function handleDelete(e: any, id: number) {
+  async function handleDelete(e: any, id: string) {
     e.stopPropagation();
     triggerConfirm('Excluir?', 'Esta ação é irreversível.', async () => {
         try { 
-            await supabase.from('acolitos').delete().eq('id', id); 
+            const docRef = doc(db, 'acolitos', id)
+            await deleteDoc(docRef)
             fetchAcolitos(); 
             closeAlert() 
         } catch (e: any) { triggerAlert('Erro', e.message, 'error') }
     })
   }
 
-  // --- LÓGICA DOS RELATÓRIOS PDF ---
+  // --- LÓGICA DOS RELATÓRIOS PDF (Mantida 100% igual) ---
   const generateBirthdayReport = async () => {
       triggerAlert("Aguarde", "Gerando PDF de aniversariantes...", "info");
       const jsPDF = (await import('jspdf')).default;
@@ -283,7 +299,7 @@ export default function AcolitosPage() {
   const generateDataReport = async () => {
       triggerAlert("Aguarde", "Gerando PDF de dados cadastrais...", "info");
       const jsPDF = (await import('jspdf')).default;
-      const doc = new jsPDF('l', 'mm', 'a4'); // Paisagem para caber colunas
+      const doc = new jsPDF('l', 'mm', 'a4'); 
       
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
@@ -292,7 +308,6 @@ export default function AcolitosPage() {
       let y = 35;
       doc.setFontSize(9);
 
-      // Definição dinâmica de colunas
       let currentX = 10;
       doc.setFont("helvetica", "bold");
       doc.setFillColor(230, 230, 230);
@@ -304,7 +319,6 @@ export default function AcolitosPage() {
       if(reportCols.perfil) cols.push({ label: "PERFIL", width: 30, key: 'perfil' });
       if(reportCols.liturgia) cols.push({ label: "LITURGIA (FUNÇÕES)", width: 60, key: 'liturgia' });
 
-      // O nome pega o espaço que sobrar
       const usedWidth = cols.reduce((sum, c) => sum + c.width, 0) - 70;
       cols[0].width = 277 - usedWidth;
 
@@ -339,7 +353,6 @@ export default function AcolitosPage() {
                   text = parts.length > 0 ? parts.join(', ') : 'Padrão';
               }
 
-              // Truncar para não invadir coluna vizinha (aproximado)
               const maxChars = Math.floor(c.width / 2); 
               if(text.length > maxChars) text = text.substring(0, maxChars-3) + '...';
 
@@ -407,7 +420,6 @@ export default function AcolitosPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900 leading-tight">Gestão de Equipe</h2>
-                    <p className="text-sm text-gray-500 font-medium">Acólitos & Cerimoniários do Santuário</p>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-bold text-gray-600 shadow-sm w-fit">
                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {acolitos.length} Membros

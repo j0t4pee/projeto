@@ -2,43 +2,43 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/firebase'
+import { collection, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore'
 import MainLayout from '@/app/components/MainLayout'
 import { 
   Plus, X, Clock, Trash2, Save, FileText, Edit2, 
   Filter, Eye, ChevronDown, Calendar as CalendarIcon, 
   Wand2, ChevronLeft, ChevronRight, CheckCircle2, 
   AlertCircle, Info, Download, AlertTriangle, Search, 
-  Sparkles, BookOpen, ShieldCheck, Users, Flame, Palette, CalendarOff, Eraser, Settings
+  BookOpen, ShieldCheck, Users, Flame, Palette, CalendarOff, Eraser, Settings, FilePlus
 } from 'lucide-react'
 
-// --- Funções de Conversão de Cor para o PDF ---
 const hexToRgb = (hex: string): [number, number, number] => {
-    let c = hex.substring(1);
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const r = parseInt(c.substring(0, 2), 16);
-    const g = parseInt(c.substring(2, 4), 16);
-    const b = parseInt(c.substring(4, 6), 16);
-    return [r, g, b];
-};
+    if (!hex || !hex.startsWith('#')) return [229, 231, 235]
+    let c = hex.substring(1)
+    if (c.length === 3) c = c.split('').map(x => x + x).join('')
+    const r = parseInt(c.substring(0, 2), 16) || 229
+    const g = parseInt(c.substring(2, 4), 16) || 231
+    const b = parseInt(c.substring(4, 6), 16) || 235
+    return [r, g, b]
+}
 
 const getContrastYIQ = (hex: string): [number, number, number] => {
-    const [r, g, b] = hexToRgb(hex);
-    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-    return (yiq >= 128) ? [0, 0, 0] : [255, 255, 255];
-};
+    const [r, g, b] = hexToRgb(hex)
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000
+    return (yiq >= 128) ? [0, 0, 0] : [255, 255, 255]
+}
 
-// --- Constantes ---
 const PLACE_SIGLA: { [key: string]: string } = {
     "São José Operário": "SJO", "Capela Nsa. Sra. das Graças": "NSG",
     "Nsa. Sra. da Abadia": "NSA", "Santa Clara": "SC"
 }
 
 const PLACE_COLORS: { [key: string]: string } = {
-    "São José Operário": "border-l-blue-600",
-    "Capela Nsa. Sra. das Graças": "border-l-emerald-600",
-    "Nsa. Sra. da Abadia": "border-l-orange-500",
-    "Santa Clara": "border-l-violet-600"
+    "São José Operário": "border-l-blue-500",
+    "Capela Nsa. Sra. das Graças": "border-l-emerald-500",
+    "Nsa. Sra. da Abadia": "border-l-orange-400",
+    "Santa Clara": "border-l-violet-500"
 }
 
 const ROLES = ['Missal', 'Vela', 'Turíbulo', 'Naveta']
@@ -47,7 +47,6 @@ const PLACES = ["São José Operário", "Capela Nsa. Sra. das Graças", "Nsa. Sr
 const ITEMS_PER_PAGE = 10 
 const SUNDAY_SCHEDULE = ['07:30', '09:00', '17:30', '19:00']
 
-// --- Tipagens ---
 interface NewEscala {
     data: string; hora: string; local: string; observacao: string; cor: string;
     acolitos: { nome: string; funcao: string }[];
@@ -58,7 +57,6 @@ interface AlertState {
     title: string; message: string; onConfirm?: () => void; isConfirmDialog: boolean;
 }
 
-// --- Componente de Minicalendário Lateral ---
 const MemoizedCalendar = React.memo(({ 
     currentDate, setDate, rawEvents, filterDate, setFilterDate 
 }: { 
@@ -80,14 +78,14 @@ const MemoizedCalendar = React.memo(({
         const isToday = new Date().toLocaleDateString('en-CA') === dateStr
         const isSelected = filterDate === dateStr
 
-        let bgClass = 'hover:bg-gray-100 text-gray-700'
-        if (isSelected) bgClass = 'bg-blue-600 text-white font-bold shadow-md transform scale-105'
-        else if (isToday) bgClass = 'border border-blue-600 text-blue-600 font-bold bg-blue-50'
+        let bgClass = 'hover:bg-gray-50 text-gray-600'
+        if (isSelected) bgClass = 'bg-blue-600 text-white font-semibold shadow-md transform scale-105'
+        else if (isToday) bgClass = 'border border-blue-500 text-blue-600 font-semibold bg-blue-50'
 
         days.push(
             <button key={d} onClick={() => setFilterDate(isSelected ? null : dateStr)} className={`w-7 h-7 flex items-center justify-center rounded-full text-xs relative transition-all ${bgClass}`}>
                 {d}
-                {hasEvent && !isSelected && <div className="absolute bottom-0 w-1 h-1 bg-emerald-500 rounded-full"></div>}
+                {hasEvent && !isSelected && <div className="absolute bottom-0 w-1 h-1 bg-emerald-400 rounded-full"></div>}
             </button>
         )
     }
@@ -96,16 +94,16 @@ const MemoizedCalendar = React.memo(({
         <div className="bg-white border border-gray-200 rounded-3xl p-4 w-full shadow-sm">
             <div className="flex justify-between items-center mb-3">
                 <button onClick={() => setDate(new Date(year, month - 1, 1))} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronLeft size={16}/></button>
-                <span className="text-xs font-bold capitalize text-gray-900 tracking-wide">{currentDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</span>
+                <span className="text-sm font-semibold capitalize text-gray-800">{currentDate.toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</span>
                 <button onClick={() => setDate(new Date(year, month + 1, 1))} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronRight size={16}/></button>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center">
-                {['D','S','T','Q','Q','S','S'].map((d, i) => <span key={i} className="text-[9px] text-gray-400 font-bold uppercase mb-1">{d}</span>)}
+                {['D','S','T','Q','Q','S','S'].map((d, i) => <span key={i} className="text-[10px] text-gray-400 font-medium uppercase mb-1">{d}</span>)}
                 {days}
             </div>
             {filterDate && (
                 <div className="mt-3 pt-2 border-t border-gray-100 text-center">
-                    <button onClick={() => setFilterDate(null)} className="text-[10px] text-blue-600 hover:text-blue-700 font-bold uppercase tracking-wider transition">Limpar filtro de data</button>
+                    <button onClick={() => setFilterDate(null)} className="text-[11px] text-blue-600 hover:text-blue-700 font-medium transition">Limpar filtro de data</button>
                 </div>
             )}
         </div>
@@ -113,16 +111,14 @@ const MemoizedCalendar = React.memo(({
 })
 MemoizedCalendar.displayName = 'MemoizedCalendar'
 
-
 export default function Home() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   
-  // Modais
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isAutoModalOpen, setIsAutoModalOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
-  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false)
   const [isRulesLocalModalOpen, setIsRulesLocalModalOpen] = useState(false)
   
   const [customAlert, setCustomAlert] = useState<AlertState>({
@@ -145,27 +141,48 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1)
   const [calendarDate, setCalendarDate] = useState(new Date()) 
   const [filterDate, setFilterDate] = useState<string | null>(null)
-  const [editingEventId, setEditingEventId] = useState<number | null>(null)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
   
   const [autoGenMonth, setAutoGenMonth] = useState('') 
   const [pdfTargetMonth, setPdfTargetMonth] = useState('')
+  const [showPastMonths, setShowPastMonths] = useState(false)
 
-  // Configs do Gerador Automático
   const [isGenerating, setIsGenerating] = useState(false)
   const [clearBeforeGenerate, setClearBeforeGenerate] = useState(true)
+  const [keepPreviousMonth, setKeepPreviousMonth] = useState(true)
   const [includeDay19, setIncludeDay19] = useState(false)
   const [singleAcolyteWeekdays, setSingleAcolyteWeekdays] = useState(false)
   const [noWeekdays, setNoWeekdays] = useState(false)
   const [mondayNovena, setMondayNovena] = useState(false) 
+  const [highlightDays, setHighlightDays] = useState<{dia: string, cor: string}[]>([])
 
   const [formData, setFormData] = useState({
     date: '', time: '', place: PLACES[0], obs: '', cor: '#e5e7eb',
     acolitos: [ { nome: '', funcao: 'Missal' }, { nome: '', funcao: 'Vela' } ]
   })
 
-  const canManage = userProfile === 'admin' || userProfile === 'diretoria';
+  const canManage = userProfile === 'admin' || userProfile === 'diretoria'
 
-  // 1. BUSCA DE DADOS E INICIALIZAÇÃO
+  const monthOptions = useMemo(() => {
+    const opts = []
+    const today = new Date()
+    
+    const start = showPastMonths 
+        ? new Date(today.getFullYear(), today.getMonth() - 6, 1)
+        : new Date(today.getFullYear(), today.getMonth(), 1)
+        
+    const limit = showPastMonths ? 12 : 4
+
+    for(let i=0; i<limit; i++) {
+        const y = start.getFullYear()
+        const m = String(start.getMonth() + 1).padStart(2, '0')
+        const label = start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        opts.push({ value: `${y}-${m}`, label: label.charAt(0).toUpperCase() + label.slice(1) })
+        start.setMonth(start.getMonth() + 1)
+    }
+    return opts
+  }, [showPastMonths])
+
   useEffect(() => { 
     setMounted(true)
     const authData = localStorage.getItem('auth_token')
@@ -177,26 +194,24 @@ export default function Home() {
         setUserName(user.nome || '') 
     } catch (e) { router.push('/login') }
 
-    const todayISO = new Date().toISOString().slice(0, 7);
-    setAutoGenMonth(todayISO);
-    setPdfTargetMonth(todayISO);
+    const todayISO = new Date().toISOString().slice(0, 7)
+    setAutoGenMonth(todayISO)
+    setPdfTargetMonth(todayISO)
 
     fetchInitialData()
   }, [])
 
-  // 2. CONTROLE DO TECLADO
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
             if (customAlert.isOpen) { 
-                setCustomAlert(prev => ({ ...prev, isOpen: false })); 
-                return; 
+                setCustomAlert(prev => ({ ...prev, isOpen: false })) 
+                return 
             }
-            setIsModalOpen(false); 
-            setIsAutoModalOpen(false); 
-            setIsPdfModalOpen(false); 
-            setIsNotesModalOpen(false); 
-            setIsRulesLocalModalOpen(false);
+            setIsModalOpen(false) 
+            setIsAutoModalOpen(false) 
+            setIsPdfModalOpen(false) 
+            setIsRulesLocalModalOpen(false)
         }
     }
     window.addEventListener('keydown', handleEsc)
@@ -209,6 +224,8 @@ export default function Home() {
           const month = String(calendarDate.getMonth() + 1).padStart(2, '0')
           setAutoGenMonth(`${year}-${month}`)
           setIncludeDay19(false)
+          setHighlightDays([])
+          setWizardStep(1)
       }
   }, [isAutoModalOpen, calendarDate])
 
@@ -224,21 +241,37 @@ export default function Home() {
 
   async function fetchInitialData() {
     setLoading(true)
-    const [acolitosRes, restricoesRes, escalasRes] = await Promise.all([
-        supabase.from('acolitos').select('id, nome, sobrenome, ativo, genero, apenas_fim_de_semana, parceiro_id, manuseia_missal, manuseia_turibulo').eq('ativo', true).order('nome'),
-        supabase.from('restricoes').select('*').order('data_inicio', { ascending: true }),
-        supabase.from('escalas').select('*').order('data', { ascending: true }).order('hora', { ascending: true })
-    ])
+    try {
+        const qAcolitos = query(collection(db, 'acolitos'), where('ativo', '==', true))
+        const snapAcolitos = await getDocs(qAcolitos)
+        const acolitosData = snapAcolitos.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || ''))
 
-    if (acolitosRes.data) setDbAcolitos(acolitosRes.data)
-    if (restricoesRes.data) setRestrictions(restricoesRes.data)
-    if (escalasRes.data) setRawEvents(escalasRes.data)
-    setLoading(false)
+        const qRestricoes = query(collection(db, 'restricoes'), orderBy('data_inicio', 'asc'))
+        const snapRestricoes = await getDocs(qRestricoes)
+        const restricoesData = snapRestricoes.docs.map(d => ({ id: d.id, ...d.data() }))
+
+        const qEscalas = query(collection(db, 'escalas'), orderBy('data', 'asc'))
+        const snapEscalas = await getDocs(qEscalas)
+        const escalasData = snapEscalas.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.hora || '').localeCompare(b.hora || ''))
+
+        setDbAcolitos(acolitosData)
+        setRestrictions(restricoesData)
+        setRawEvents(escalasData)
+    } catch (error) {
+        triggerAlert("Erro", "Falha ao comunicar com o banco de dados.", "error")
+    } finally {
+        setLoading(false)
+    }
   }
 
   async function fetchEscalas() {
-    const { data } = await supabase.from('escalas').select('*').order('data', { ascending: true }).order('hora', { ascending: true })
-    if (data) setRawEvents(data)
+    try {
+        const qEscalas = query(collection(db, 'escalas'), orderBy('data', 'asc'))
+        const snapEscalas = await getDocs(qEscalas)
+        const escalasData = snapEscalas.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (a.hora || '').localeCompare(b.hora || ''))
+        setRawEvents(escalasData)
+    } catch(error) {
+    }
   }
 
   const handleLogout = (e: React.MouseEvent) => {
@@ -273,7 +306,6 @@ export default function Home() {
     return filtered
   }, [rawEvents, showOnlyMyScales, userName, selectedPlace, activeTab, filterDate, selectedAcolyte])
 
-  // Paginação aplicada à lista
   const paginatedEvents = useMemo(() => {
       const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
       return filteredEvents.slice(startIndex, startIndex + ITEMS_PER_PAGE)
@@ -283,7 +315,6 @@ export default function Home() {
 
   useEffect(() => { setCurrentPage(1) }, [activeTab, showOnlyMyScales, selectedPlace, filterDate, selectedAcolyte])
 
-  // Agrupamento por mês (Lista Clássica)
   const groupedEvents = useMemo(() => {
       const groups: { [key: string]: any[] } = {}
       paginatedEvents.forEach(evt => {
@@ -305,10 +336,18 @@ export default function Home() {
               const lastDay = new Date(year, calendarDate.getMonth() + 1, 0).getDate()
               setLoading(true)
               try {
-                  const { error } = await supabase.from('escalas').delete().gte('data', `${monthStr}-01`).lte('data', `${monthStr}-${lastDay}`)
-                  if(error) throw error
+                  const start = `${monthStr}-01`
+                  const end = `${monthStr}-${lastDay}`
+                  
+                  const q = query(collection(db, 'escalas'), where('data', '>=', start), where('data', '<=', end))
+                  const snap = await getDocs(q)
+
+                  const batch = writeBatch(db)
+                  snap.docs.forEach(docSnap => batch.delete(docSnap.ref))
+                  await batch.commit()
+
                   await fetchEscalas()
-              } catch (e: any) { triggerAlert("Erro", e.message, "error") } 
+              } catch (e: any) { triggerAlert("Erro", "Erro ao apagar: " + e.message, "error") } 
               finally { setLoading(false) }
           }
       )
@@ -318,8 +357,9 @@ export default function Home() {
     setIsGenerating(true)
     try {
         const [year, month] = autoGenMonth.split('-').map(Number)
-        const { data: fixedRulesData } = await supabase.from('regras_fixas').select('*');
-        const fixedRules = fixedRulesData || []; 
+        
+        const snapRules = await getDocs(collection(db, 'regras_fixas'))
+        const fixedRules = snapRules.docs.map(d => ({ id: d.id, ...d.data() }))
         const excludedDays: number[] = [] 
 
         const usageMap: { [key: string]: number } = {}
@@ -333,13 +373,13 @@ export default function Home() {
 
             const isEligible = (ac: any, roleIndex: number) => {
                 const fullName = getFullName(ac)
-                if (currentScheduledNames.has(fullName) || adjacentScheduledNames.has(fullName)) return false;
+                if (currentScheduledNames.has(fullName) || adjacentScheduledNames.has(fullName)) return false
                 if (!ac.ativo || team.includes(fullName)) return false
                 
                 const hasRestriction = restrictions.some(r => {
-                      return r.acolito_nome === fullName && (dateStr >= r.data_inicio && dateStr <= (r.data_fim || r.data_inicio));
-                });
-                if (hasRestriction) return false;
+                      return r.acolito_nome === fullName && (dateStr >= r.data_inicio && dateStr <= (r.data_fim || r.data_inicio))
+                })
+                if (hasRestriction) return false
 
                 if (ac.apenas_fim_de_semana && !isWeekend) return false
                 if (roleIndex === 0 && !ac.manuseia_missal) return false
@@ -368,7 +408,7 @@ export default function Home() {
                     })
                     .sort((a, b) => (usageMap[a.nome] || 0) - (usageMap[b.nome] || 0) || (Math.random() - 0.5))
 
-                let selected = false;
+                let selected = false
                 for (const candidate of pool) {
                     if (candidate.parceiro_id) {
                         const partner = dbAcolitos.find(p => p.id === candidate.parceiro_id)
@@ -376,19 +416,19 @@ export default function Home() {
                             team.push(getFullName(candidate)); team.push(getFullName(partner))
                             usageMap[candidate.nome] = (usageMap[candidate.nome] || 0) + 1
                             usageMap[partner.nome] = (usageMap[partner.nome] || 0) + 1
-                            selected = true; break;
+                            selected = true; break
                         }
                     } else {
                         team.push(getFullName(candidate))
                         usageMap[candidate.nome] = (usageMap[candidate.nome] || 0) + 1
-                        selected = true; break;
+                        selected = true; break
                     }
                 }
-                if (!selected) break;
+                if (!selected) break
                 attempts++
             }
 
-            if (team.length === 3 && targetSize === 4) team.pop(); 
+            if (team.length === 3 && targetSize === 4) team.pop() 
             return team
         }
 
@@ -397,21 +437,21 @@ export default function Home() {
         const today = new Date(); today.setHours(0,0,0,0)
 
         for (let day = 1; day <= daysInMonth; day++) {
-            if (excludedDays.includes(day)) continue;
+            if (excludedDays.includes(day)) continue
             const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const dateObj = new Date(dateStr + 'T12:00:00') 
-            if (dateObj < today) continue;
+            if (dateObj < today) continue
 
-            const prevD = new Date(year, month - 1, day - 1);
-            const prevDateStr = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}-${String(prevD.getDate()).padStart(2, '0')}`;
-            const nextD = new Date(year, month - 1, day + 1);
-            const nextDateStr = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}-${String(nextD.getDate()).padStart(2, '0')}`;
+            const prevD = new Date(year, month - 1, day - 1)
+            const prevDateStr = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}-${String(prevD.getDate()).padStart(2, '0')}`
+            const nextD = new Date(year, month - 1, day + 1)
+            const nextDateStr = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, '0')}-${String(nextD.getDate()).padStart(2, '0')}`
 
-            const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-            const weekDay = utcDate.getUTCDay(); 
+            const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+            const weekDay = utcDate.getUTCDay() 
 
             if (noWeekdays && weekDay >= 1 && weekDay <= 5 && day !== 19 && day !== 15) {
-                if (!(mondayNovena && weekDay === 1)) continue; 
+                if (!(mondayNovena && weekDay === 1)) continue 
             }
 
             let dayTimes: string[] = []
@@ -424,36 +464,44 @@ export default function Home() {
 
             if (dayTimes.length > 0) {
                 for (const time of dayTimes) {
-                    let teamSize = 2; let obs = ''; let local = PLACES[0]; let color = '#e5e7eb'; 
+                    let teamSize = 2; let obs = ''; let local = PLACES[0]; let color = '#e5e7eb' 
+
+                    const customHighlight = highlightDays.find(hd => parseInt(hd.dia) === day)
+                    if (customHighlight) {
+                        color = customHighlight.cor
+                    }
 
                     if (weekDay === 0) {
-                        if (time === '07:30') local = PLACES[3];
-                        else if (time === '17:30') local = PLACES[2];
-                        else local = PLACES[0];
+                        if (time === '07:30') local = PLACES[3]
+                        else if (time === '17:30') local = PLACES[2]
+                        else local = PLACES[0]
                     } else {
-                        if (day === 15) local = PLACES[2];
-                        else if (day === 19) local = PLACES[0];
-                        else if (weekDay === 6) local = PLACES[1];
+                        if (day === 15) local = PLACES[2]
+                        else if (day === 19) local = PLACES[0]
+                        else if (weekDay === 6) local = PLACES[1]
                     }
 
-                    if (singleAcolyteWeekdays && (weekDay === 3 || weekDay === 5)) teamSize = 1;
+                    if (singleAcolyteWeekdays && (weekDay === 3 || weekDay === 5)) teamSize = 1
                     if (mondayNovena && weekDay === 1 && time === '19:30') {
-                        teamSize = 1; obs = 'Novena Perpétua'; local = PLACES[0]; 
+                        teamSize = 1; obs = 'Novena Perpétua'; local = PLACES[0] 
                     }
-                    if (day === 19 && local === PLACES[0]) { obs = 'Missa Votiva de São José'; teamSize = includeDay19 ? 4 : 2; }
-                    if (day === 15 && local === PLACES[2]) { obs = 'Missa Votiva Nsa. Sra. da Abadia'; teamSize = 2; }
+                    if (day === 19 && local === PLACES[0]) { 
+                        obs = 'Missa Votiva de São José'
+                        teamSize = includeDay19 ? 4 : 1 
+                    }
+                    if (day === 15 && local === PLACES[2]) { obs = 'Missa Votiva Nsa. Sra. da Abadia'; teamSize = 2 }
 
-                    const existsInBatch = tempEscalas.find(e => e.data === dateStr && e.local === local && e.hora === time);
-                    if (existsInBatch) continue;
+                    const existsInBatch = tempEscalas.find(e => e.data === dateStr && e.local === local && e.hora === time)
+                    if (existsInBatch) continue
 
                     const currentScheduledNames = new Set([
                         ...rawEvents.filter(e => e.data === dateStr).flatMap(e => e.acolitos.map((a:any) => a.nome)),
                         ...tempEscalas.filter(e => e.data === dateStr).flatMap(e => e.acolitos.map(a => a.nome))
-                    ]);
+                    ])
                     const adjacentScheduledNames = new Set([
                         ...rawEvents.filter(e => e.data === prevDateStr || e.data === nextDateStr).flatMap(e => e.acolitos.map((a:any) => a.nome)),
                         ...tempEscalas.filter(e => e.data === prevDateStr || e.data === nextDateStr).flatMap(e => e.acolitos.map(a => a.nome))
-                    ]);
+                    ])
 
                     const teamNames = getTeam(teamSize, dateStr, day, currentScheduledNames, adjacentScheduledNames)
                     if (teamNames.length >= 2 || (teamSize === 1 && teamNames.length === 1)) {
@@ -464,13 +512,41 @@ export default function Home() {
             }
         }
         
+        if (!keepPreviousMonth) {
+            const startOfGenMonth = `${autoGenMonth}-01`
+            const qPast = query(collection(db, 'escalas'), where('data', '<', startOfGenMonth))
+            const snapPast = await getDocs(qPast)
+            
+            if (!snapPast.empty) {
+                const deletePastBatch = writeBatch(db)
+                snapPast.docs.forEach(docSnap => deletePastBatch.delete(docSnap.ref))
+                await deletePastBatch.commit()
+            }
+        }
+
         if (clearBeforeGenerate) {
             const lastDay = new Date(year, month, 0).getDate()
-            await supabase.from('escalas').delete().gte('data', `${autoGenMonth}-01`).lte('data', `${autoGenMonth}-${lastDay}`)
+            const start = `${autoGenMonth}-01`
+            const end = `${autoGenMonth}-${lastDay}`
+            
+            const q = query(collection(db, 'escalas'), where('data', '>=', start), where('data', '<=', end))
+            const snap = await getDocs(q)
+
+            if (!snap.empty) {
+                const deleteBatch = writeBatch(db)
+                snap.docs.forEach(docSnap => deleteBatch.delete(docSnap.ref))
+                await deleteBatch.commit()
+            }
         }
         
-        const { error } = await supabase.from('escalas').insert(tempEscalas)
-        if(error) throw error
+        if (tempEscalas.length > 0) {
+            const insertBatch = writeBatch(db)
+            tempEscalas.forEach(escala => {
+                const newDocRef = doc(collection(db, 'escalas'))
+                insertBatch.set(newDocRef, escala)
+            })
+            await insertBatch.commit()
+        }
         
         setIsAutoModalOpen(false)
         fetchEscalas()
@@ -482,60 +558,73 @@ export default function Home() {
 
   const generatePDF = async () => {
     try {
-        let eventsToPrint = rawEvents.filter(evt => evt.data.startsWith(pdfTargetMonth));
+        let eventsToPrint = rawEvents.filter(evt => evt.data && evt.data.startsWith(pdfTargetMonth))
         if (selectedPlace) eventsToPrint = eventsToPrint.filter(evt => evt.local === selectedPlace)
-        if(eventsToPrint.length === 0) return triggerAlert("Vazio", "Não há escalas neste mês.", "warning");
+        if(eventsToPrint.length === 0) return triggerAlert("Vazio", "Não há escalas neste mês.", "warning")
 
-        triggerAlert("Aguarde", "Gerando PDF...", "info");
-        const jsPDF = (await import('jspdf')).default;
+        triggerAlert("Aguarde", "Gerando PDF...", "info")
+        
+        const jsPDFModule = await import('jspdf')
+        const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default
         const doc = new jsPDF('p', 'mm', 'a4') 
+        
         const sortedEvents = [...eventsToPrint].sort((a, b) => new Date(a.data + 'T' + (a.hora || '00:00')).getTime() - new Date(b.data + 'T' + (b.hora || '00:00')).getTime())
 
-        const [yStr, mStr] = pdfTargetMonth.split('-');
-        const refDate = new Date(parseInt(yStr), parseInt(mStr) - 1, 1);
+        const [yStr, mStr] = pdfTargetMonth.split('-')
+        const refDate = new Date(parseInt(yStr), parseInt(mStr) - 1, 1)
         const monthName = refDate.toLocaleDateString('pt-BR', { month: 'long' }).toUpperCase()
         const year = refDate.getFullYear()
 
         doc.setFont("helvetica", "bold").setFontSize(14)
         doc.text(`ESCALA MENSAL - ${monthName} / ${year}`, 105, 15, { align: "center" })
 
-        const startX = 10; const startY = 25; const boxWidth = 46; const boxHeight = 26; const gap = 2; const columns = 4;
-        let cursorX = startX; let cursorY = startY;
+        const startX = 10; const startY = 25; const boxWidth = 46; const boxHeight = 26; const gap = 2; const columns = 4
+        let cursorX = startX; let cursorY = startY
         
         doc.setFontSize(8)
         sortedEvents.forEach((evt, index) => {
-            if (index > 0 && index % columns === 0) { cursorX = startX; cursorY += boxHeight + gap; }
-            if (cursorY + boxHeight > 280) { doc.addPage(); cursorY = 20; }
+            if (index > 0 && index % columns === 0) { cursorX = startX; cursorY += boxHeight + gap }
+            if (cursorY + boxHeight > 280) { doc.addPage(); cursorY = 20 }
 
-            const d = new Date(evt.data + 'T12:00:00'); 
-            const weekDay = d.toLocaleDateString('pt-BR', { weekday: 'long' }).charAt(0).toUpperCase() + d.toLocaleDateString('pt-BR', { weekday: 'long' }).slice(1);
-            const dayMonth = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            const d = new Date(evt.data + 'T12:00:00') 
+            const weekDay = d.toLocaleDateString('pt-BR', { weekday: 'long' }).charAt(0).toUpperCase() + d.toLocaleDateString('pt-BR', { weekday: 'long' }).slice(1)
+            const dayMonth = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
             
-            const safeCor = (evt.cor && evt.cor !== '#e5e7eb') ? evt.cor : '#e5e7eb';
-            const bgRgb = hexToRgb(safeCor);
-            const textRgb = getContrastYIQ(safeCor);
+            const safeCor = (evt.cor && String(evt.cor).startsWith('#')) ? String(evt.cor) : '#e5e7eb'
+            const bgRgb = hexToRgb(safeCor)
+            const textRgb = getContrastYIQ(safeCor)
 
-            doc.setFillColor(bgRgb[0], bgRgb[1], bgRgb[2]).rect(cursorX, cursorY, boxWidth, 6, 'F');
-            doc.setDrawColor(200).rect(cursorX, cursorY, boxWidth, boxHeight);
+            doc.setFillColor(bgRgb[0], bgRgb[1], bgRgb[2]).rect(cursorX, cursorY, boxWidth, 6, 'F')
+            doc.setDrawColor(200).rect(cursorX, cursorY, boxWidth, boxHeight)
             
-            doc.setTextColor(textRgb[0], textRgb[1], textRgb[2]).setFontSize(6.5).setFont("helvetica", "bold");
-            doc.text(`${weekDay}, ${evt.hora ? evt.hora.substring(0, 5) : ''} - ${PLACE_SIGLA[evt.local] || '???'} ${dayMonth}`, cursorX + (boxWidth / 2), cursorY + 4, { align: 'center' });
+            doc.setTextColor(textRgb[0], textRgb[1], textRgb[2]).setFontSize(6.5).setFont("helvetica", "bold")
+            
+            const horaStr = evt.hora ? String(evt.hora).substring(0, 5) : '';
+            const localSigla = PLACE_SIGLA[evt.local] || '???';
+            doc.text(`${weekDay}, ${horaStr} - ${localSigla} ${dayMonth}`, cursorX + (boxWidth / 2), cursorY + 4, { align: 'center' })
 
-            doc.setTextColor(0).setFont("helvetica", "normal").setFontSize(7.5);
-            let listY = cursorY + 10;
+            doc.setTextColor(0).setFont("helvetica", "normal").setFontSize(7.5)
+            let listY = cursorY + 10
             
-            (evt.acolitos || []).forEach((ac: any) => {
-                doc.setFillColor(240, 240, 240).rect(cursorX + 1.5, listY - 3, 4, 4, 'F');
-                doc.setFont("helvetica", "bold").text(ROLE_SIGLA[ac.funcao || 'Auxiliar'] || 'A', cursorX + 2, listY);
-                doc.setFont("helvetica", "normal").text((ac.nome || 'A definir').substring(0, 17), cursorX + 7, listY);
-                listY += 4;
-            });
+            const acolitosList = Array.isArray(evt.acolitos) ? evt.acolitos : []
+            acolitosList.forEach((ac: any) => {
+                doc.setFillColor(240, 240, 240).rect(cursorX + 1.5, listY - 3, 4, 4, 'F')
+                const funcaoSigla = ROLE_SIGLA[ac.funcao || 'Auxiliar'] || 'A'
+                doc.setFont("helvetica", "bold").text(funcaoSigla, cursorX + 2, listY)
+                
+                const nomeStr = String(ac.nome || 'A definir').substring(0, 17)
+                doc.setFont("helvetica", "normal").text(nomeStr, cursorX + 7, listY)
+                listY += 4
+            })
             cursorX += boxWidth + gap
-        });
+        })
 
-        doc.save(`escala_${monthName.toLowerCase()}.pdf`);
-        setIsPdfModalOpen(false); closeAlert();
-    } catch (error) { triggerAlert("Erro", "Falha ao gerar o PDF.", "error"); }
+        doc.save(`escala_${monthName.toLowerCase()}.pdf`)
+        setIsPdfModalOpen(false); closeAlert()
+    } catch (error: any) { 
+        console.error("PDF Error:", error);
+        triggerAlert("Erro", "Falha ao gerar PDF: " + (error.message || 'Desconhecido'), "error") 
+    }
   }
 
   const handleEdit = useCallback((evt: any) => {
@@ -544,10 +633,14 @@ export default function Home() {
       setIsModalOpen(true)
   }, [])
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
       triggerConfirm("Excluir Missa", "Tem certeza que deseja apagar esta escala?", async () => {
-          await supabase.from('escalas').delete().eq('id', id)
-          fetchEscalas(); closeAlert();
+          try {
+              await deleteDoc(doc(db, 'escalas', id))
+              fetchEscalas(); closeAlert()
+          } catch(e: any) {
+              triggerAlert("Erro", "Não foi possível excluir a missa.", "error")
+          }
       })
   }
 
@@ -564,11 +657,19 @@ export default function Home() {
       })
 
       const payload = { data: formData.date, hora: formData.time, local: formData.place, observacao: formData.obs, cor: formData.cor, acolitos: acolitosFinal }
-      let error = null
-      if (editingEventId) { const { error: err } = await supabase.from('escalas').update(payload).eq('id', editingEventId); error = err } 
-      else { const { error: err } = await supabase.from('escalas').insert([payload]); error = err }
+      let errorMsg = null
+      
+      try {
+          if (editingEventId) { 
+              await updateDoc(doc(db, 'escalas', editingEventId), payload) 
+          } else { 
+              await addDoc(collection(db, 'escalas'), payload)
+          }
+      } catch(err: any) {
+          errorMsg = err.message
+      }
 
-      if (error) triggerAlert("Erro", "Falha ao salvar", "error")
+      if (errorMsg) triggerAlert("Erro", "Falha ao salvar: " + errorMsg, "error")
       else { setIsModalOpen(false); fetchEscalas() }
   }
 
@@ -583,29 +684,23 @@ export default function Home() {
   }
 
   if (!mounted) return null
-  const showDay19Option = autoGenMonth && new Date(Number(autoGenMonth.split('-')[0]), Number(autoGenMonth.split('-')[1])-1, 19).getDate() === 19;
-  const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+  const showDay19Option = autoGenMonth && new Date(Number(autoGenMonth.split('-')[0]), Number(autoGenMonth.split('-')[1])-1, 19).getDate() === 19
+  const todayDate = new Date(); todayDate.setHours(0,0,0,0)
   
-  // --- BOTÕES EXTRAS PARA INJETAR NO MENU LATERAL (MAINLAYOUT) ---
   const homeSidebarExtras = (
       <>
-          <button onClick={() => setIsPdfModalOpen(true)} className="w-full mt-4 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-bold transition shadow-sm">
-              <Download size={18} className="text-blue-600"/> Baixar Escala
+          <button onClick={() => setIsPdfModalOpen(true)} className="w-full mt-4 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-medium transition shadow-sm">
+              <Download size={18} className="text-gray-600"/> Relatórios
           </button>
           
-          <button onClick={() => setIsRulesLocalModalOpen(true)} className="w-full mt-2 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-bold transition shadow-sm">
-              <BookOpen size={18} className="text-purple-600"/> Regras do Gerador
-          </button>
-          
-          <button onClick={() => setIsNotesModalOpen(true)} className="w-full mt-2 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-bold transition shadow-sm">
-              <Sparkles size={18} className="text-amber-500"/> Notas da Versão
+          <button onClick={() => setIsRulesLocalModalOpen(true)} className="w-full mt-2 flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-sm font-medium transition shadow-sm">
+              <BookOpen size={18} className="text-gray-600"/> Regras do Gerador
           </button>
       </>
-  );
+  )
 
   return (
     <>
-      {/* Alerta Customizado Global da Página */}
       {customAlert.isOpen && (
           <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
               <div className="bg-white border border-gray-100 rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
@@ -625,11 +720,11 @@ export default function Home() {
                   </div>
                   <div className="flex gap-3 pt-2">
                       {!customAlert.isConfirmDialog ? (
-                          <button onClick={closeAlert} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold py-3 rounded-xl transition">Entendi</button>
+                          <button onClick={closeAlert} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-3 rounded-xl transition">Entendi</button>
                       ) : (
                           <>
-                              <button onClick={closeAlert} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-bold py-3 rounded-xl transition">Cancelar</button>
-                              <button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); closeAlert(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition">Sim, confirmar</button>
+                              <button onClick={closeAlert} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold py-3 rounded-xl transition">Cancelar</button>
+                              <button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); closeAlert(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-xl transition">Sim, confirmar</button>
                           </>
                       )}
                   </div>
@@ -637,26 +732,18 @@ export default function Home() {
           </div>
       )}
 
-      {/* Uso do Layout Padrão */}
       <MainLayout userProfile={userProfile} onLogout={handleLogout} customSidebarContent={homeSidebarExtras}>
           <main className="px-4 py-8 max-w-7xl mx-auto w-full pt-20 lg:pt-8 animate-in fade-in duration-500">
               
-              {/* Novo Cabeçalho da Página Principal */}
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
                   <div>
-                      <div className="flex items-center gap-3">
-                          <h2 className="text-xl font-bold text-gray-900 leading-tight">Painel de Escalas</h2>
-                          <button onClick={() => setIsNotesModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-full text-[10px] font-bold uppercase tracking-wider transition">
-                              <Sparkles size={12}/> Ver Novidades
-                          </button>
-                      </div>
+                      <h2 className="text-xl font-bold text-gray-900 leading-tight">Painel de Escalas</h2>
                       <p className="text-sm text-gray-500 font-medium mt-1">Gerencie as missas e equipes do santuário</p>
                   </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
                   
-                  {/* Coluna Lateral da Home */}
                   <div className="lg:col-span-1 space-y-6">
                       <div className="lg:sticky lg:top-8 space-y-5">
                           <MemoizedCalendar 
@@ -664,22 +751,24 @@ export default function Home() {
                             rawEvents={rawEvents} filterDate={filterDate} setFilterDate={setFilterDate}
                           />
 
-                          {/* BOTÕES DE AÇÃO NA COLUNA LATERAL */}
                           {canManage && (
                               <div className="flex flex-col gap-2.5">
-                                  <button onClick={openNewForm} className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-blue-600/20 active:scale-95">
-                                      <Plus size={16}/> Nova Missa
+                                  <button onClick={openNewForm} className="w-full h-11 bg-gradient-to-r from-slate-700 to-slate-600 hover:from-slate-600 hover:to-slate-500 text-white border-0 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition shadow-sm active:scale-95">
+                                      <FilePlus size={20}/> Inclusão manual
                                   </button>
-                                  <button onClick={() => setIsAutoModalOpen(true)} className="w-full h-10 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-purple-600/20 active:scale-95">
-                                      <Wand2 size={16}/> Gerar Escalas
+                                  <button onClick={() => setIsAutoModalOpen(true)} className="w-full h-11 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-500 hover:to-blue-400 text-white border-0 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition shadow-sm active:scale-95">
+                                      <Wand2 size={20}/> Gerar Escalas
+                                  </button>
+                                  <button onClick={handleClearMonth} className="w-full h-11 bg-white border border-red-200 text-red-500 hover:bg-red-50 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition shadow-sm active:scale-95">
+                                      <Eraser size={20}/> Limpar Mês Atual
                                   </button>
                               </div>
                           )}
 
                           <div className="bg-white border border-gray-200 rounded-3xl p-4 shadow-sm space-y-4">
                               <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
-                                  <button onClick={() => setActiveTab('upcoming')} className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Próximas</button>
-                                  <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Histórico</button>
+                                  <button onClick={() => setActiveTab('upcoming')} className={`flex-1 py-1.5 rounded-md text-[11px] font-medium transition ${activeTab === 'upcoming' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Próximas</button>
+                                  <button onClick={() => setActiveTab('history')} className={`flex-1 py-1.5 rounded-md text-[11px] font-medium transition ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Histórico</button>
                               </div>
 
                               <div className="space-y-2.5">
@@ -688,7 +777,7 @@ export default function Home() {
                                           <option value="">Todas as Igrejas</option>
                                           {PLACES.map(p => <option key={p} value={p}>{p.replace('Rainha da Paz (Matriz)', 'Matriz')}</option>)}
                                       </select>
-                                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"/>
+                                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
                                   </div>
                                   
                                   <div className="relative">
@@ -699,7 +788,7 @@ export default function Home() {
                                       >
                                           <option value="">Filtrar Acólito...</option>
                                           {dbAcolitos.map(a => {
-                                              const nome = `${a.nome} ${a.sobrenome || ''}`.trim();
+                                              const nome = `${a.nome} ${a.sobrenome || ''}`.trim()
                                               return <option key={a.id || a.nome} value={nome}>{nome}</option>
                                           })}
                                       </select>
@@ -707,27 +796,20 @@ export default function Home() {
                                   </div>
                               </div>
 
-                              <button onClick={() => { setShowOnlyMyScales(!showOnlyMyScales); setSelectedAcolyte('') }} className={`w-full h-9 px-3 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-2 transition ${showOnlyMyScales ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
+                              <button onClick={() => { setShowOnlyMyScales(!showOnlyMyScales); setSelectedAcolyte('') }} className={`w-full h-9 px-3 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-2 transition ${showOnlyMyScales ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}>
                                   {showOnlyMyScales ? <Eye size={16}/> : <Filter size={16}/>} Minhas Escalas
                               </button>
                               
                               {(showOnlyMyScales || selectedAcolyte) && (
                                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
-                                      <span className="text-[10px] text-blue-600 font-bold block uppercase tracking-wider">Missas Encontradas</span>
-                                      <span className="text-xl font-black text-gray-900 block mt-1">{filteredEvents.length}</span>
+                                      <span className="text-[10px] text-blue-600 font-semibold block uppercase tracking-wider">Missas Encontradas</span>
+                                      <span className="text-xl font-bold text-gray-900 block mt-1">{filteredEvents.length}</span>
                                   </div>
                               )}
                           </div>
-
-                          {canManage && (
-                              <button onClick={handleClearMonth} className="w-full h-10 border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition">
-                                  <Eraser size={16}/> Limpar Mês Atual
-                              </button>
-                          )}
                       </div>
                   </div>
 
-                  {/* Coluna Central com as Escalas (FORMATO LISTA HORIZONTAL) */}
                   <div className="lg:col-span-3 space-y-6">
                       {Object.keys(groupedEvents).length === 0 ? (
                           <div className="text-center py-20 bg-white border border-gray-200 rounded-3xl shadow-sm">
@@ -740,47 +822,44 @@ export default function Home() {
                       ) : (
                           Object.entries(groupedEvents).map(([month, monthEvents]) => (
                               <div key={month} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4 px-2">{month}</h2>
+                                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-4 px-2">{month}</h2>
                                   <div className="flex flex-col gap-4">
                                       {monthEvents.map((evt) => {
-                                          const date = new Date(evt.data + 'T12:00:00');
-                                          const day = date.getDate();
-                                          const isPast = date < todayDate;
+                                          const date = new Date(evt.data + 'T12:00:00')
+                                          const day = date.getDate()
+                                          const isPast = date < todayDate
 
                                           return (
                                               <div key={evt.id} className={`group relative bg-white border border-gray-200 rounded-3xl p-5 flex flex-col sm:flex-row gap-5 transition-all shadow-sm hover:shadow-md 
                                                   ${isPast ? 'opacity-60 grayscale-[0.5]' : ''}
                                                   ${PLACE_COLORS[evt.local] || 'border-l-gray-400'} border-l-[6px]`}>
                                                   
-                                                  {/* Lado Esquerdo: Data e Cor */}
                                                   <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center sm:w-20 shrink-0 border-b sm:border-b-0 sm:border-r border-gray-100 pb-3 sm:pb-0 sm:pr-4">
                                                       <div className="flex flex-col items-center">
-                                                          <span className="text-2xl font-black text-gray-900 tracking-tight">{day}</span>
-                                                          <span className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">{date.toLocaleDateString('pt-BR', {month:'short'}).replace('.','')}</span>
+                                                          <span className="text-2xl font-bold text-gray-900 tracking-tight">{day}</span>
+                                                          <span className="text-[9px] font-semibold uppercase text-gray-400 tracking-wider">{date.toLocaleDateString('pt-BR', {month:'short'}).replace('.','')}</span>
                                                       </div>
                                                       {evt.cor && evt.cor !== '#e5e7eb' && (
                                                           <div className="w-3 h-3 rounded-full shadow-sm mt-0 sm:mt-3 border border-black/10" style={{ backgroundColor: evt.cor }} title="Cor de impressão"></div>
                                                       )}
                                                   </div>
 
-                                                  {/* Lado Direito: Informações e Acólitos */}
                                                   <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                       <div className="flex justify-between items-start mb-3">
                                                           <div>
-                                                              <h3 className="font-bold text-gray-900 text-base leading-none mb-2">{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
+                                                              <h3 className="font-semibold text-gray-900 text-base leading-none mb-2">{evt.local.replace('Rainha da Paz (Matriz)', 'Matriz')}</h3>
                                                               <div className="flex items-center gap-2 flex-wrap">
-                                                                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1.5">
+                                                                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg flex items-center gap-1.5">
                                                                       <Clock size={12}/> {evt.hora.substring(0,5)}
                                                                   </span>
                                                                   {evt.observacao && (
-                                                                      <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg truncate max-w-[200px]" title={evt.observacao}>
+                                                                      <span className="text-[9px] font-semibold text-amber-800 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg truncate max-w-[200px]" title={evt.observacao}>
                                                                           {evt.observacao}
                                                                       </span>
                                                                   )}
                                                               </div>
                                                           </div>
                                                           
-                                                          {/* Botões de Ação na Missa */}
                                                           {canManage && !isPast && (
                                                               <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                   <button onClick={() => handleEdit(evt)} className="p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-gray-500 hover:text-blue-600 transition border border-gray-200/60 shadow-sm"><Edit2 size={16}/></button>
@@ -789,11 +868,10 @@ export default function Home() {
                                                           )}
                                                       </div>
 
-                                                      {/* Grid de Acólitos */}
                                                       <div className="flex flex-wrap gap-2">
                                                           {evt.acolitos.map((ac: any, idx: number) => (
                                                               <div key={idx} className="bg-gray-50 border border-gray-200/60 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-sm">
-                                                                  <span className="text-[11px] font-bold text-gray-700">{ac.nome.split(' ')[0]} {ac.nome.split(' ').length > 1 ? ac.nome.split(' ')[1].charAt(0) + '.' : ''}</span>
+                                                                  <span className="text-[11px] font-medium text-gray-700">{ac.nome.split(' ')[0]} {ac.nome.split(' ').length > 1 ? ac.nome.split(' ')[1].charAt(0) + '.' : ''}</span>
                                                                   <span className="text-[8px] font-bold text-blue-600 bg-blue-100/50 px-1.5 py-0.5 rounded uppercase tracking-wider">{ROLE_SIGLA[ac.funcao] || 'A'}</span>
                                                               </div>
                                                           ))}
@@ -807,11 +885,10 @@ export default function Home() {
                           ))
                       )}
 
-                      {/* Paginação */}
                       {totalPages > 1 && (
                           <div className="flex justify-center items-center gap-4 pt-6 border-t border-gray-200">
                               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 transition text-gray-600 shadow-sm"><ChevronLeft size={20}/></button>
-                              <span className="text-sm font-bold text-gray-500">Página {currentPage} de {totalPages}</span>
+                              <span className="text-sm font-semibold text-gray-500">Página {currentPage} de {totalPages}</span>
                               <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-50 transition text-gray-600 shadow-sm"><ChevronRight size={20}/></button>
                           </div>
                       )}
@@ -819,82 +896,162 @@ export default function Home() {
               </div>
           </main>
 
-          {/* === MODAIS === */}
-
-          {/* Modal Gerar Escalas */}
           {isAutoModalOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
-                <div className="bg-white border border-gray-200 rounded-3xl p-6 w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
-                    <button onClick={() => setIsAutoModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={20}/></button>
-                    <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2"><Wand2 className="text-purple-600" size={20}/> Gerador Automático</h3>
-                    <div className="space-y-6">
-                        <div className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
-                            <div>
-                                <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider block mb-2">Mês de Referência</label>
-                                <input type="month" value={autoGenMonth} onChange={e => setAutoGenMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition shadow-sm" />
+                <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+                    
+                    {wizardStep === 1 && (
+                        <>
+                            <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-white shrink-0">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Wand2 className="text-blue-600" size={22}/> Configurar Geração</h3>
+                                <button onClick={() => setIsAutoModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-full transition"><X size={20}/></button>
                             </div>
                             
-                            <div className="pt-2 space-y-3 border-t border-gray-200">
-                                <label className="flex items-start gap-3 cursor-pointer group">
-                                    <input type="checkbox" checked={clearBeforeGenerate} onChange={e => setClearBeforeGenerate(e.target.checked)} className="mt-0.5 w-4 h-4 accent-purple-600 rounded"/>
-                                    <div className="text-xs text-gray-600"><span className="font-bold block text-purple-700">Limpar automaticamente</span>Apaga as escalas existentes deste mês antes de gerar.</div>
-                                </label>
-                                <label className="flex items-start gap-3 cursor-pointer group">
-                                    <input type="checkbox" checked={mondayNovena} onChange={e => setMondayNovena(e.target.checked)} className="mt-0.5 w-4 h-4 accent-purple-500 rounded"/>
-                                    <div className="text-xs text-gray-600"><span className="font-bold block text-purple-700">Novena (Segunda-feira)</span>Escala apenas 1 acólito nas missas de segunda às 19h30.</div>
-                                </label>
-                                <label className="flex items-start gap-3 cursor-pointer group">
-                                    <input type="checkbox" checked={noWeekdays} onChange={e => setNoWeekdays(e.target.checked)} className="mt-0.5 w-4 h-4 accent-red-600 rounded"/>
-                                    <div className="text-xs text-gray-600"><span className="font-bold block text-red-600">Sem acólitos na semana</span>Não gera escalas de seg. a sex. (exceto dias especiais e Novena).</div>
-                                </label>
-                                {!noWeekdays && (
-                                    <label className="flex items-start gap-3 cursor-pointer group">
-                                        <input type="checkbox" checked={singleAcolyteWeekdays} onChange={e => setSingleAcolyteWeekdays(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded"/>
-                                        <div className="text-xs text-gray-600"><span className="font-bold block text-blue-700">Apenas 1 acólito (Quarta/Sexta)</span>Reduz a equipe para 1 pessoa nas missas de quarta e sexta-feira.</div>
-                                    </label>
-                                )}
-                                {showDay19Option && (
-                                    <label className="flex items-start gap-3 cursor-pointer group">
-                                        <input type="checkbox" checked={includeDay19} onChange={e => setIncludeDay19(e.target.checked)} className="mt-0.5 w-4 h-4 accent-orange-500 rounded"/>
-                                        <div className="text-xs text-gray-600"><span className="font-bold block text-orange-600">Escalar Turíbulo no dia 19?</span>Adiciona funções extras na Missa de São José.</div>
-                                    </label>
-                                )}
+                            <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+                                <div className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
+                                    <div>
+                                        <label className="text-[11px] text-gray-500 font-medium uppercase tracking-wide block mb-2">Mês para Gerar</label>
+                                        <div className="relative">
+                                            <select value={autoGenMonth} onChange={e => setAutoGenMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition shadow-sm appearance-none cursor-pointer">
+                                                {monthOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                            </select>
+                                            <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="pt-4 space-y-4 border-t border-gray-200">
+                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                            <input type="checkbox" checked={keepPreviousMonth} onChange={e => setKeepPreviousMonth(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                            <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Manter histórico anterior?</span>Se desmarcado, apagará as escalas dos meses passados para economizar espaço no sistema.</div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                            <input type="checkbox" checked={clearBeforeGenerate} onChange={e => setClearBeforeGenerate(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                            <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Limpar o mês alvo</span>Apaga as escalas que já existirem no mês selecionado acima antes de gerar.</div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                            <input type="checkbox" checked={mondayNovena} onChange={e => setMondayNovena(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                            <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Novena (Segunda-feira)</span>Escala apenas 1 acólito nas missas de segunda às 19h30.</div>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer group">
+                                            <input type="checkbox" checked={noWeekdays} onChange={e => setNoWeekdays(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                            <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Sem acólitos na semana</span>Não gera escalas de seg. a sex. (exceto dias especiais e Novena).</div>
+                                        </label>
+                                        {!noWeekdays && (
+                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                <input type="checkbox" checked={singleAcolyteWeekdays} onChange={e => setSingleAcolyteWeekdays(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                                <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Apenas 1 acólito (Quarta/Sexta)</span>Reduz a equipe para 1 pessoa nas missas de quarta e sexta-feira.</div>
+                                            </label>
+                                        )}
+                                        {showDay19Option && (
+                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                <input type="checkbox" checked={includeDay19} onChange={e => setIncludeDay19(e.target.checked)} className="mt-0.5 w-4 h-4 accent-blue-600 rounded shrink-0 cursor-pointer"/>
+                                                <div className="text-xs text-gray-600 pt-0.5"><span className="font-semibold block text-gray-900 text-sm mb-0.5">Equipe completa no dia 19?</span>Se marcado, aloca 4 acólitos na Missa Votiva de São José. Caso contrário, escala apenas 1.</div>
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <button onClick={handleStartAutoGenerate} disabled={isGenerating} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-purple-600/20 disabled:opacity-50">
-                            {isGenerating ? 'Processando...' : 'Gerar Escalas Agora'}
-                        </button>
-                    </div>
+
+                            <div className="p-6 border-t border-gray-100 bg-gray-50/80 shrink-0 space-y-3">
+                                <button onClick={() => setWizardStep(2)} className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-sm active:scale-95">
+                                    <Palette size={18}/> Personalizar Cores dos Dias
+                                </button>
+                                <button onClick={handleStartAutoGenerate} disabled={isGenerating} className="w-full bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white font-medium py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/30 disabled:opacity-50 active:scale-95">
+                                    {isGenerating ? 'Processando...' : 'Gerar Escalas Agora'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+
+                    {wizardStep === 2 && (
+                        <>
+                            <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-white shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => setWizardStep(1)} className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-full transition"><ChevronLeft size={20}/></button>
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Palette className="text-blue-600" size={22}/> Dias Especiais</h3>
+                                </div>
+                                <button onClick={() => setIsAutoModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-full transition"><X size={20}/></button>
+                            </div>
+                            
+                            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                                <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
+                                    <p className="text-sm text-gray-600 mb-4">Adicione os dias deste mês que você deseja destacar com uma cor específica no relatório PDF final.</p>
+                                    
+                                    <button type="button" onClick={() => setHighlightDays([...highlightDays, {dia: '', cor: '#16a34a'}])} className="w-full bg-white border border-gray-300 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 text-gray-700 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2 text-sm shadow-sm mb-4">
+                                        <Plus size={16}/> Adicionar Dia
+                                    </button>
+
+                                    {highlightDays.length === 0 && (
+                                        <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-xl">
+                                            <p className="text-sm text-gray-400">Nenhum dia especial configurado.</p>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-3">
+                                        {highlightDays.map((hd, idx) => (
+                                            <div key={idx} className="flex gap-2">
+                                                <input type="number" min="1" max="31" placeholder="Dia" value={hd.dia} onChange={e => {
+                                                    const newHds = [...highlightDays]
+                                                    newHds[idx].dia = e.target.value
+                                                    setHighlightDays(newHds)
+                                                }} className="w-20 bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition shadow-sm" />
+                                                <div className="relative flex-1">
+                                                    <select value={hd.cor} onChange={e => {
+                                                        const newHds = [...highlightDays]
+                                                        newHds[idx].cor = e.target.value
+                                                        setHighlightDays(newHds)
+                                                    }} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition shadow-sm appearance-none cursor-pointer">
+                                                        <option value="#16a34a">Verde</option>
+                                                        <option value="#dc2626">Vermelho</option>
+                                                        <option value="#eab308">Amarelo</option>
+                                                        <option value="#e5e7eb">Padrão</option>
+                                                    </select>
+                                                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                                                </div>
+                                                <button type="button" onClick={() => setHighlightDays(highlightDays.filter((_, i) => i !== idx))} className="p-3 bg-white border border-gray-200 hover:bg-red-50 text-gray-400 hover:text-red-500 hover:border-red-200 rounded-xl transition shrink-0"><Trash2 size={18}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 border-t border-gray-100 bg-gray-50/80 shrink-0">
+                                <button onClick={handleStartAutoGenerate} disabled={isGenerating} className="w-full bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white font-medium py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/30 disabled:opacity-50 active:scale-95">
+                                    {isGenerating ? 'Processando...' : 'Gerar Escalas Agora'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+
                 </div>
             </div>
           )}
 
-          {/* Modal Edição/Manual */}
           {isModalOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
-               <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col">
+               <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
                  
-                 <div className="flex justify-between items-center p-6 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+                 <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-white shrink-0">
                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                       {editingEventId ? <Edit2 className="text-blue-600" size={20}/> : <Plus className="text-blue-600" size={20}/>}
-                       {editingEventId ? 'Editar Missa' : 'Nova Missa'}
+                       {editingEventId ? <Edit2 className="text-gray-900" size={22}/> : <FilePlus className="text-gray-900" size={22}/>}
+                       {editingEventId ? 'Editar Missa' : 'Inclusão Manual'}
                    </h3>
                    <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-full transition"><X size={20}/></button>
                  </div>
                  
-                 <div className="p-6 space-y-5">
+                 <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Data</label>
+                            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1.5 block ml-1">Data</label>
                             <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
                         </div>
                         <div>
-                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Hora</label>
+                            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1.5 block ml-1">Hora</label>
                             <input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" />
                         </div>
                     </div>
                     <div>
-                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Local</label>
+                        <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1.5 block ml-1">Local</label>
                         <select value={formData.place} onChange={e => setFormData({...formData, place: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition">
                             {PLACES.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
@@ -902,29 +1059,28 @@ export default function Home() {
                     
                     <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block ml-1">Observação</label>
+                            <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-1.5 block ml-1">Observação</label>
                             <input type="text" value={formData.obs} onChange={e => setFormData({...formData, obs: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 focus:bg-white transition" placeholder="Opcional. Ex: Solenidade de Páscoa" />
                         </div>
                         
-                        {/* Seletor de Cores Simplificado */}
                         <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
-                            <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-3 block text-center">Cor do Relatório PDF</label>
+                            <label className="text-[11px] font-medium text-gray-600 uppercase tracking-wide mb-3 block text-center">Cor do Relatório PDF</label>
                             <div className="grid grid-cols-4 gap-2">
-                                <button type="button" onClick={() => setFormData({...formData, cor: '#e5e7eb'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#e5e7eb' ? 'bg-white border-gray-400 shadow-sm ring-1 ring-gray-400 scale-105' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
+                                <button type="button" onClick={() => setFormData({...formData, cor: '#e5e7eb'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#e5e7eb' ? 'bg-white border-gray-300 shadow-sm ring-1 ring-gray-300 scale-105' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
                                     <div className="w-6 h-6 rounded-full bg-gray-200 border border-gray-300 mb-1"></div>
-                                    <span className="text-[9px] font-bold uppercase mt-1">Padrão</span>
+                                    <span className="text-[9px] font-semibold uppercase mt-1">Padrão</span>
                                 </button>
-                                <button type="button" onClick={() => setFormData({...formData, cor: '#16a34a'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#16a34a' ? 'bg-green-50 border-green-500 shadow-sm ring-1 ring-green-500 scale-105 text-green-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
-                                    <div className="w-6 h-6 rounded-full bg-green-600 mb-1"></div>
-                                    <span className="text-[9px] font-bold uppercase mt-1">Verde</span>
+                                <button type="button" onClick={() => setFormData({...formData, cor: '#16a34a'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#16a34a' ? 'bg-green-50 border-green-300 shadow-sm ring-1 ring-green-400 scale-105 text-green-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
+                                    <div className="w-6 h-6 rounded-full bg-green-500 mb-1"></div>
+                                    <span className="text-[9px] font-semibold uppercase mt-1">Verde</span>
                                 </button>
-                                <button type="button" onClick={() => setFormData({...formData, cor: '#dc2626'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#dc2626' ? 'bg-red-50 border-red-500 shadow-sm ring-1 ring-red-500 scale-105 text-red-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
-                                    <div className="w-6 h-6 rounded-full bg-red-600 mb-1"></div>
-                                    <span className="text-[9px] font-bold uppercase mt-1">Vermelho</span>
+                                <button type="button" onClick={() => setFormData({...formData, cor: '#dc2626'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#dc2626' ? 'bg-red-50 border-red-300 shadow-sm ring-1 ring-red-400 scale-105 text-red-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
+                                    <div className="w-6 h-6 rounded-full bg-red-500 mb-1"></div>
+                                    <span className="text-[9px] font-semibold uppercase mt-1">Vermelho</span>
                                 </button>
-                                <button type="button" onClick={() => setFormData({...formData, cor: '#eab308'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#eab308' ? 'bg-yellow-50 border-yellow-500 shadow-sm ring-1 ring-yellow-500 scale-105 text-yellow-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
-                                    <div className="w-6 h-6 rounded-full bg-yellow-500 mb-1"></div>
-                                    <span className="text-[9px] font-bold uppercase mt-1">Amarelo</span>
+                                <button type="button" onClick={() => setFormData({...formData, cor: '#eab308'})} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${formData.cor === '#eab308' ? 'bg-yellow-50 border-yellow-300 shadow-sm ring-1 ring-yellow-400 scale-105 text-yellow-700' : 'border-transparent text-gray-400 hover:bg-gray-100'}`}>
+                                    <div className="w-6 h-6 rounded-full bg-yellow-400 mb-1"></div>
+                                    <span className="text-[9px] font-semibold uppercase mt-1">Amarelo</span>
                                 </button>
                             </div>
                         </div>
@@ -932,8 +1088,8 @@ export default function Home() {
 
                     <div className="pt-5 border-t border-gray-100">
                         <div className="flex justify-between items-center mb-4">
-                            <label className="text-sm font-bold text-gray-900">Equipe de Acólitos</label>
-                            <button onClick={() => setFormData({...formData, acolitos: [...formData.acolitos, {nome: '', funcao: 'Missal'}]})} className="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-blue-700 font-bold transition flex items-center gap-1">
+                            <label className="text-sm font-semibold text-gray-900">Equipe de Acólitos</label>
+                            <button onClick={() => setFormData({...formData, acolitos: [...formData.acolitos, {nome: '', funcao: 'Missal'}]})} className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-gray-700 font-semibold transition flex items-center gap-1">
                                 <Plus size={14}/> Vaga
                             </button>
                         </div>
@@ -943,7 +1099,7 @@ export default function Home() {
                                     <select value={acolito.nome} onChange={e => updateAcolito(idx, 'nome', e.target.value)} className="w-full sm:flex-1 bg-white border border-gray-300 rounded-lg p-2.5 text-[11px] text-gray-900 outline-none focus:border-blue-600">
                                         <option value="">Selecione...</option>
                                         {dbAcolitos.map(a => {
-                                            const nome = `${a.nome} ${a.sobrenome || ''}`.trim();
+                                            const nome = `${a.nome} ${a.sobrenome || ''}`.trim()
                                             return <option key={a.id || a.nome} value={nome}>{nome}</option>
                                         })}
                                     </select>
@@ -960,154 +1116,97 @@ export default function Home() {
                     </div>
                  </div>
                  
-                 <div className="p-6 border-t border-gray-100 bg-gray-50/80 sticky bottom-0 rounded-b-3xl">
-                     <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
-                         <Save size={18}/> Salvar Missa
+                 <div className="p-6 border-t border-gray-100 bg-gray-50/80 shrink-0">
+                     <button onClick={handleSave} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-medium py-3.5 rounded-xl shadow-md shadow-blue-500/20 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                         <Save size={20}/> Salvar Missa
                      </button>
                  </div>
                </div>
             </div>
           )}
 
-          {/* Modal PDF */}
           {isPdfModalOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
-                <div className="bg-white border border-gray-200 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
-                    <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
-                    <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2"><FileText className="text-blue-600" size={24}/> Baixar Escala</h3>
-                    <div className="space-y-6">
-                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
-                            <label className="text-[11px] text-gray-500 font-bold uppercase tracking-wider block mb-2">Selecione o Mês</label>
-                            <input type="month" value={pdfTargetMonth} onChange={e => setPdfTargetMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition shadow-sm" />
+                <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-lg shadow-2xl relative flex flex-col overflow-hidden">
+                    <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50/50">
+                        <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2"><FileText className="text-blue-600" size={24}/> Relatório de Escalas</h3>
+                        <button onClick={() => setIsPdfModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4">
+                            <div>
+                                <label className="text-[11px] text-gray-500 font-medium uppercase tracking-wide block mb-2">Selecione o Mês</label>
+                                <div className="relative">
+                                    <select value={pdfTargetMonth} onChange={e => setPdfTargetMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3.5 text-sm text-gray-900 outline-none focus:border-blue-600 transition shadow-sm appearance-none cursor-pointer">
+                                        {monthOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                    </select>
+                                    <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                                </div>
+                            </div>
+                            <div className="pt-2 border-t border-gray-200">
+                                <label className="flex items-center gap-3 cursor-pointer group mt-2">
+                                    <input type="checkbox" checked={showPastMonths} onChange={e => setShowPastMonths(e.target.checked)} className="w-4 h-4 accent-blue-600 rounded cursor-pointer"/>
+                                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition pt-0.5">Exibir meses anteriores no seletor</span>
+                                </label>
+                            </div>
                         </div>
-                        <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 active:scale-95 text-sm">
-                            <Download size={18}/> Gerar Arquivo PDF
+                        <button onClick={generatePDF} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 rounded-xl transition shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 active:scale-95 text-base">
+                            <Download size={20}/> Baixar PDF
                         </button>
                     </div>
                 </div>
             </div>
           )}
 
-          {/* Modal Notas da Versão */}
-          {isNotesModalOpen && (
-              <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
-                  <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
-                      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                              <Sparkles className="text-amber-500" size={22}/> Notas da Atualização
-                          </h2>
-                          <button onClick={() => setIsNotesModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
-                      </div>
-                      <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-6">
-                          
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-blue-600 flex items-center gap-1.5"><Palette size={16}/> Modo Lista Aprimorado</h4>
-                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-blue-100">
-                                  O layout retornou para o formato clássico de lista horizontal. Agora os cartões das missas ocupam a tela de ponta a ponta, oferecendo melhor leitura das equipes sem necessidade de "hover".
-                              </p>
-                          </div>
-
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-700 flex items-center gap-1.5"><Trash2 size={16}/> Limpeza de Menus</h4>
-                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-gray-200">
-                                  Os módulos de <strong>Financeiro</strong>, <strong>Atas</strong> e <strong>Escala Complementar</strong> foram removidos do sistema para focar 100% na gestão da equipe e geração automatizada de escalas.
-                              </p>
-                          </div>
-
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-purple-600 flex items-center gap-1.5"><Wand2 size={16}/> Botões Sempre à Mão</h4>
-                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-purple-100">
-                                  Os botões de "Nova Missa" e "Gerar Escalas" agora ficam sempre fixos e visíveis na coluna lateral, logo abaixo do minicalendário. 
-                              </p>
-                          </div>
-
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-red-500 flex items-center gap-1.5"><FileText size={16}/> Cores Rápidas (Simplificado)</h4>
-                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-red-100">
-                                  Você pode selecionar manualmente <strong>Verde, Vermelho ou Amarelo</strong> para os dias especiais direto na criação da missa. O PDF calcula o brilho sozinho para manter a legibilidade.
-                              </p>
-                          </div>
-
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-green-600 flex items-center gap-1.5"><CalendarOff size={16}/> Restrições Estilo Viagem</h4>
-                              <p className="text-sm text-gray-600 leading-relaxed pl-5 border-l-2 border-green-100">
-                                  Na aba de Configurações, as restrições ganharam um calendário interativo e inteligente. Ele permite selecionar o período e mescla automaticamente restrições coladas em um só bloco, limpando a visualização.
-                              </p>
-                          </div>
-                      </div>
-                      <div className="p-6 border-t border-gray-100 bg-gray-50/80">
-                          <button onClick={() => setIsNotesModalOpen(false)} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3.5 rounded-xl transition active:scale-95 text-sm">
-                              Entendido, obrigado!
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          )}
-
-          {/* Modal Regras de Escala */}
           {isRulesLocalModalOpen && (
               <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in zoom-in-95">
-                  <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-xl shadow-2xl flex flex-col overflow-hidden">
-                      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-purple-50/50">
-                          <h2 className="text-lg font-bold text-purple-900 flex items-center gap-2">
-                              <BookOpen className="text-purple-600" size={22}/> Inteligência de Sorteio
+                  <div className="bg-white border border-gray-200 rounded-3xl w-full max-w-xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+                      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+                          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                              <BookOpen className="text-gray-600" size={22}/> Inteligência de Sorteio
                           </h2>
-                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-white rounded-full transition"><X size={20}/></button>
+                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={20}/></button>
                       </div>
-                      <div className="p-6 max-h-[65vh] overflow-y-auto custom-scrollbar space-y-6">
+                      <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
                           <p className="text-sm text-gray-600 mb-2">Entenda os critérios rigorosos que o robô do sistema usa ao preencher as escalas do mês:</p>
                           
                           <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><ShieldCheck size={16} className="text-green-600"/> 1. Igualdade e Proporcionalidade</h4>
+                              <h4 className="font-semibold text-sm text-gray-900 flex items-center gap-1.5"><ShieldCheck size={16} className="text-green-500"/> 1. Igualdade e Proporcionalidade</h4>
                               <p className="pl-6 border-l-2 border-gray-100 text-sm text-gray-600 leading-relaxed">
-                                  <strong>SE</strong> houver vagas na missa, <strong>ENTÃO</strong> o sistema cria um mapa de contagem. O robô ordena todos os acólitos pela quantidade de vezes que já serviram no mês atual. Quem serviu menos tem prioridade imediata no sorteio das vagas.
+                                  SE houver vagas na missa, ENTÃO o sistema cria um mapa de contagem. O robô ordena todos os acólitos pela quantidade de vezes que já serviram no mês atual. Quem serviu menos tem prioridade imediata no sorteio das vagas.
                               </p>
                           </div>
 
                           <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><CalendarOff size={16} className="text-red-500"/> 2. Restrições e Conflitos Diários</h4>
+                              <h4 className="font-semibold text-sm text-gray-900 flex items-center gap-1.5"><CalendarOff size={16} className="text-red-500"/> 2. Restrições e Conflitos Diários</h4>
                               <p className="pl-6 border-l-2 border-gray-100 text-sm text-gray-600 leading-relaxed">
-                                  <strong>SE</strong> o acólito estiver no banco de dados de restrições para a data atual,<br/>
-                                  <strong>OU SE</strong> ele já foi sorteado para servir em qualquer outra missa no mesmo dia,<br/>
-                                  <strong>OU SE</strong> ele serviu no dia anterior ou no dia seguinte (proteção de descanso),<br/>
-                                  <strong>ENTÃO</strong> ele é sumariamente ignorado e removido do sorteio.
+                                  SE o acólito estiver no banco de dados de restrições para a data atual, OU SE ele já foi sorteado para servir em qualquer outra missa no mesmo dia, OU SE ele serviu no dia anterior ou no dia seguinte, ENTÃO ele é sumariamente ignorado e removido do sorteio.
                               </p>
                           </div>
 
                           <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><Users size={16} className="text-blue-500"/> 3. Parceiros (Duplas Inseparáveis)</h4>
+                              <h4 className="font-semibold text-sm text-gray-900 flex items-center gap-1.5"><Users size={16} className="text-blue-500"/> 3. Parceiros (Duplas Inseparáveis)</h4>
                               <p className="pl-6 border-l-2 border-gray-100 text-sm text-gray-600 leading-relaxed">
-                                  <strong>SE</strong> o acólito sorteado possuir um "Parceiro" cadastrado, o sistema tentará alocar a dupla nas próximas 2 vagas.<br/>
-                                  <strong>SE</strong> faltar apenas 1 vaga para a missa fechar, <strong>ENTÃO</strong> o sistema ignora os dois para não quebrar a dupla, passando a vez.
+                                  SE o acólito sorteado possuir um Parceiro cadastrado, o sistema tentará alocar a dupla nas próximas 2 vagas. SE faltar apenas 1 vaga para a missa fechar, ENTÃO o sistema ignora os dois para não quebrar a dupla, passando a vez.
                               </p>
                           </div>
 
                           <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><Flame size={16} className="text-orange-500"/> 4. Funções Litúrgicas (Vagas)</h4>
+                              <h4 className="font-semibold text-sm text-gray-900 flex items-center gap-1.5"><Flame size={16} className="text-orange-500"/> 4. Funções Litúrgicas (Vagas)</h4>
                               <p className="pl-6 border-l-2 border-gray-100 text-sm text-gray-600 leading-relaxed">
-                                  <strong>SE</strong> a vaga em aberto for a 1ª (Missal), <strong>ENTÃO</strong> exige que "Manuseia Missal" = Verdadeiro no cadastro.<br/>
-                                  <strong>SE</strong> a vaga em aberto for a 3ª (Turíbulo), <strong>ENTÃO</strong> exige que "Manuseia Turíbulo" = Verdadeiro E que o Gênero seja Masculino.
+                                  SE a vaga em aberto for a 1ª (Missal), ENTÃO exige que Manuseia Missal seja Verdadeiro no cadastro. SE a vaga em aberto for a 3ª (Turíbulo), ENTÃO exige que Manuseia Turíbulo seja Verdadeiro E que o Gênero seja Masculino.
                               </p>
                           </div>
 
                           <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><CalendarIcon size={16} className="text-purple-500"/> 5. Apenas Fim de Semana</h4>
+                              <h4 className="font-semibold text-sm text-gray-900 flex items-center gap-1.5"><CalendarIcon size={16} className="text-indigo-500"/> 5. Apenas Fim de Semana</h4>
                               <p className="pl-6 border-l-2 border-gray-100 text-sm text-gray-600 leading-relaxed">
-                                  <strong>SE</strong> a opção "Só FDS" estiver marcada, <strong>ENTÃO</strong> o robô só verifica se o dia da semana é Domingo (0) ou Sábado (6). Caso contrário, bloqueia.
+                                  SE a opção Só FDS estiver marcada, ENTÃO o robô só verifica se o dia da semana é Domingo (0) ou Sábado (6). Caso contrário, bloqueia.
                               </p>
-                          </div>
-
-                          <div className="space-y-2">
-                              <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5"><Settings size={16} className="text-gray-500"/> 6. Condicionais do Menu de Geração</h4>
-                              <ul className="pl-6 border-l-2 border-gray-100 list-disc list-inside space-y-1 text-sm text-gray-600 leading-relaxed">
-                                  <li><strong>Missa Dia 19:</strong> SE marcado, eleva o tamanho da equipe de São José para 4 vagas automaticamente.</li>
-                                  <li><strong>Novena:</strong> SE marcado, bloqueia geração normal nas Segundas às 19:30 e insere limite forçado de 1 vaga.</li>
-                                  <li><strong>Semana (Qua/Sex):</strong> SE marcado, o tamanho da equipe (que seria 2) é forçado para = 1.</li>
-                              </ul>
                           </div>
                       </div>
-                      <div className="p-6 border-t border-gray-100 bg-gray-50/80">
-                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-purple-600/20 active:scale-95 text-sm">
+                      <div className="p-6 border-t border-gray-100 bg-gray-50/80 shrink-0">
+                          <button onClick={() => setIsRulesLocalModalOpen(false)} className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3.5 rounded-xl transition shadow-sm active:scale-95 text-sm">
                               Entendi a Lógica
                           </button>
                       </div>
