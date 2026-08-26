@@ -118,7 +118,6 @@ export default function LoginPage() {
           } catch(e) { console.error("Erro ao atualizar token no login:", e) }
       }
 
-      window.location.href = '/escalas' // Alterei para forçar ir para a home de escalas
 
     } catch (err: any) {
       setError(err.message)
