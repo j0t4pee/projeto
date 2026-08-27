@@ -45,7 +45,7 @@ const ROLES = ['Missal', 'Vela', 'Turíbulo', 'Naveta']
 const ROLE_SIGLA: { [key: string]: string } = { 'Missal': 'M', 'Vela': 'V', 'Turíbulo': 'T', 'Naveta': 'N' }
 const PLACES = ["São José Operário", "Capela Nsa. Sra. das Graças", "Nsa. Sra. da Abadia", "Santa Clara"]
 const ITEMS_PER_PAGE = 10 
-const SUNDAY_SCHEDULE = ['07:30', '09:00', '17:30', '19:00']
+const SUNDAY_SCHEDULE = ['07:30', '10:00', '17:00', '19:00']
 
 interface NewEscala {
     data: string; hora: string; local: string; observacao: string; cor: string;
