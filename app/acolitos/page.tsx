@@ -10,8 +10,7 @@ import {
   X, LogOut, Users, DollarSign, ClipboardList, Settings, ChevronLeft,
   ArrowLeft, Save, Trash2, User, CheckCircle2, Edit2, 
   Cake, AlertCircle, AlertTriangle, Heart, CalendarClock, 
-  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole, Download, FileText, BellRing, Mail, Send, Timer, Play, Settings2, CalendarDays, MessageSquare,
-  List
+  BookOpen, Flame, Plus, PartyPopper, Search, Shield, Clock, LockKeyhole, Download, FileText, BellRing, Mail, Send, Timer, Play, Settings2, CalendarDays, MessageSquare
 } from 'lucide-react'
 
 interface AlertState {
@@ -158,7 +157,7 @@ export default function AcolitosPage() {
           const htmlMsg = `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
                 <div style="background-color: #2563eb; padding: 20px; text-align: center;">
-                  <h2 style="color: #ffffff; margin: 0; font-size: 18px;">🧪 Teste de Notificação</h2>
+                  <h2 style="color: #ffffff; margin: 0; font-size: 18px;">Teste de Envio</h2>
                 </div>
                 <div style="padding: 24px; color: #334155; font-size: 14px; line-height: 1.6;">
                   <p style="margin-top: 0;">Olá! Este é um e-mail de teste simulado disparado pelo painel da diretoria após <b>${testForm.minutos} minuto(s)</b>.</p>
@@ -174,7 +173,7 @@ export default function AcolitosPage() {
           const res = await fetch('/api/enviar-email', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ titulo: '🧪 Teste de Envio do Sistema', mensagem: htmlMsg.replace(/\n/g, ''), emails: [testForm.email] })
+              body: JSON.stringify({ titulo: 'Teste de Envio do Sistema', mensagem: htmlMsg.replace(/\n/g, ''), emails: [testForm.email] })
           })
           if (!res.ok) throw new Error("Falha no servidor ao enviar.")
           triggerAlert('Sucesso!', 'O e-mail de teste foi enviado. Verifique sua caixa de entrada.', 'success')
@@ -350,48 +349,51 @@ export default function AcolitosPage() {
 
           let enviados = 0;
           if (sendMode === 'geral') {
-              let htmlGeral = `<div style="margin-bottom:20px;"><h2 style="color:#2563eb;margin:0;">Escala Geral</h2><p style="color:#475569;margin:5px 0 0 0;">Mês de ${mesNome.toUpperCase()} de ${year}</p></div>`;
+              let htmlGeral = `<div style="margin-bottom:20px; font-family: Arial, sans-serif;"><h2 style="color:#2563eb;margin:0;">Escala Geral</h2><p style="color:#475569;margin:5px 0 0 0;">Mês de ${mesNome.toUpperCase()} de ${year}</p></div>`;
               escalasMes.forEach(esc => {
                   const dataFormatada = esc.data.split('-').reverse().join('/');
                   const equipe = (esc.acolitos || []).map((a:any) => `<b>${a.nome}</b> (${a.funcao ? a.funcao.substring(0,1) : 'A'})`).join(', ');
-                  htmlGeral += `<div style="margin-bottom:10px;padding:12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:6px;"><p style="margin:0 0 5px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)} - ${esc.local}</p><p style="margin:0;color:#475569;font-size:13px;">👥 Equipe: ${equipe || 'Ninguém escalado'}</p></div>`;
+                  htmlGeral += `<div style="margin-bottom:10px;padding:12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:6px; font-family: Arial, sans-serif;"><p style="margin:0 0 5px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)} - ${esc.local}</p><p style="margin:0;color:#475569;font-size:13px;">Equipe: ${equipe || 'Ninguém escalado'}</p></div>`;
               });
               const emailsLista = acolitosComEmail.map(a => a.email);
               const res = await fetch('/api/enviar-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: `Escala Geral - ${mesNome.toUpperCase()}/${year}`, mensagem: htmlGeral.replace(/\n/g, '').replace(/\s+/g, ' '), emails: emailsLista }) });
               if(!res.ok) throw new Error("Falha ao enviar.");
               enviados = emailsLista.length;
           } else {
+              const normalizeStr = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ')
+              
               for (const acolito of acolitosComEmail) {
-                  const nomeCompleto = `${acolito.nome || ''} ${acolito.sobrenome || ''}`.trim().toLowerCase()
-                  const primeiroNome = (acolito.nome || '').trim().toLowerCase()
-                  const partes = primeiroNome.split(' ')
-                  const pNome = partes[0]
-                  const inicialSobrenome = (acolito.sobrenome || '').trim()[0]?.toLowerCase() || ''
-                  const nomeAbreviado = `${pNome} ${inicialSobrenome}`.replace(/\./g, '')
+                  const nomeCompleto = normalizeStr(`${acolito.nome || ''} ${acolito.sobrenome || ''}`)
 
                   const minhasEscalas = escalasMes.filter(esc => {
-                      const lista = Array.isArray(esc.acolitos) ? esc.acolitos : []
-                      return lista.some((a: any) => {
-                          if (!a) return false
-                          if (a.id === acolito.id || a.acolitoId === acolito.id) return true
-                          const nE = (a.nome || '').trim().toLowerCase().replace(/\./g, '')
-                          return nE === nomeCompleto || nE === primeiroNome || nE === nomeAbreviado || nomeCompleto.includes(nE) || nE.includes(pNome)
-                      })
-                  })
+                      const lista = Array.isArray(esc.acolitos) ? esc.acolitos : [];
+                      return lista.some((a:any) => {
+                          if(!a) return false;
+                          if(a.id === acolito.id || a.acolitoId === acolito.id) return true;
+                          const nomeEscala = normalizeStr(a.nome || '');
+                          return nomeEscala === nomeCompleto;
+                      });
+                  });
 
                   if (minhasEscalas.length > 0) {
-                      const nomeDisplay = acolito.nome.split(' ')[0];
-                      let htmlIndiv = `<div style="margin-bottom:15px;"><p style="font-size:15px;margin:0 0 5px 0;color:#1f2937;">Olá, <b>${nomeDisplay}</b>!</p><p style="font-size:13px;margin:0;color:#475569;">Aqui estão suas escalas para o mês de ${mesNome.toUpperCase()} de ${year}.</p></div>`;
+                      const primeiroNome = acolito.nome.split(' ')[0];
+                      let htmlIndiv = `<div style="margin-bottom:15px; font-family: Arial, sans-serif;"><p style="font-size:15px;margin:0 0 5px 0;color:#1f2937;">Olá, <b>${primeiroNome}</b>!</p><p style="font-size:13px;margin:0;color:#475569;">Aqui estão suas escalas para o mês de ${mesNome.toUpperCase()} de ${year}.</p></div>`;
+                      
                       minhasEscalas.forEach(esc => {
                           const dataFormatada = esc.data.split('-').reverse().join('/')
                           const myAc = (esc.acolitos || []).find((a:any) => { 
-                              const nE = (a.nome || '').trim().toLowerCase().replace(/\./g, '')
-                              return a.id === acolito.id || nE === nomeCompleto || nE === primeiroNome || nE === nomeAbreviado || nomeCompleto.includes(nE) || nE.includes(pNome)
-                          })
+                              if(!a) return false;
+                              if(a.id === acolito.id || a.acolitoId === acolito.id) return true;
+                              const nomeEscala = normalizeStr(a.nome || '');
+                              return nomeEscala === nomeCompleto;
+                          });
+
                           const dataStr = esc.data.replace(/-/g, ''); const [h, m] = (esc.hora || '00:00').split(':'); const endHour = (parseInt(h) + 1).toString().padStart(2, '0');
                           const gCalUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Missa: '+esc.local)}&dates=${dataStr}T${h}${m}00/${dataStr}T${endHour}${m}00&details=${encodeURIComponent('Função: '+(myAc?.funcao||'Padrão'))}&location=${encodeURIComponent(esc.local)}`;
-                          htmlIndiv += `<div style="margin-bottom:8px;padding:10px 12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #16a34a;border-radius:6px;"><p style="margin:0 0 4px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)}</p><p style="margin:0 0 8px 0;color:#475569;font-size:13px;">📍 ${esc.local} &nbsp;|&nbsp; 👕 Função: <b>${myAc?.funcao || 'Padrão'}</b></p><a href="${gCalUrl}" target="_blank" style="background-color:#16a34a;color:#ffffff;padding:6px 12px;text-decoration:none;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block;">+ Salvar na Agenda</a></div>`;
+                          
+                          htmlIndiv += `<div style="margin-bottom:8px;padding:10px 12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #16a34a;border-radius:6px; font-family: Arial, sans-serif;"><p style="margin:0 0 4px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)}</p><p style="margin:0 0 8px 0;color:#475569;font-size:13px;"><b>Local:</b> ${esc.local} &nbsp;|&nbsp; <b>Função:</b> ${myAc?.funcao || 'Padrão'}</p><a href="${gCalUrl}" target="_blank" style="background-color:#16a34a;color:#ffffff;padding:6px 12px;text-decoration:none;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block;">Adicionar ao Calendário</a></div>`;
                       });
+
                       const res = await fetch('/api/enviar-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: `Suas Escalas - ${mesNome.toUpperCase()}/${year}`, mensagem: htmlIndiv.replace(/\n/g, '').replace(/\s+/g, ' '), emails: [acolito.email] }) });
                       if (res.ok) enviados++;
                   }
@@ -481,19 +483,19 @@ export default function AcolitosPage() {
   return (
     <>
       {customAlert.isOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
-              <div className="bg-white border border-gray-100 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-50 text-red-500' : customAlert.type === 'success' ? 'bg-green-50 text-green-500' : customAlert.type === 'warning' ? 'bg-yellow-50 text-yellow-600' : 'bg-blue-50 text-blue-600'}`}>
-                      {customAlert.type === 'error' && <AlertCircle size={28}/>}{customAlert.type === 'success' && <CheckCircle2 size={28}/>}{customAlert.type === 'warning' && <AlertTriangle size={28}/>}{customAlert.type === 'info' && <AlertCircle size={28}/>}
+          <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+              <div className="bg-white border border-gray-100 rounded-2xl p-5 w-full max-w-sm shadow-xl text-center space-y-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-50 text-red-500' : customAlert.type === 'success' ? 'bg-emerald-50 text-emerald-500' : customAlert.type === 'warning' ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'}`}>
+                      {customAlert.type === 'error' && <AlertCircle size={24}/>}{customAlert.type === 'success' && <CheckCircle2 size={24}/>}{customAlert.type === 'warning' && <AlertTriangle size={24}/>}{customAlert.type === 'info' && <Info size={24}/>}
                   </div>
-                  <div><h3 className="text-lg font-bold text-gray-900 mb-1">{customAlert.title}</h3><p className="text-sm text-gray-600 leading-relaxed">{customAlert.message}</p></div>
+                  <div><h3 className="text-base font-semibold text-gray-900 mb-1">{customAlert.title}</h3><p className="text-sm text-gray-500 leading-relaxed">{customAlert.message}</p></div>
                   <div className="flex gap-3 pt-2">
                       {!customAlert.onConfirm ? (
-                          <button onClick={closeAlert} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold py-3 rounded-xl transition">Entendi</button>
+                          <button onClick={closeAlert} className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2.5 rounded-xl border border-gray-200 transition active:scale-95 text-sm">Compreendido</button>
                       ) : (
                           <>
-                              <button onClick={closeAlert} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-bold py-3 rounded-xl transition">Cancelar</button>
-                              <button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); closeAlert(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition">Sim</button>
+                              <button onClick={closeAlert} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-medium py-2.5 rounded-xl transition text-sm">Cancelar</button>
+                              <button onClick={() => { if(customAlert.onConfirm) customAlert.onConfirm(); closeAlert(); }} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 rounded-xl transition text-sm">Confirmar</button>
                           </>
                       )}
                   </div>
@@ -507,7 +509,7 @@ export default function AcolitosPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
                 <div><h2 className="text-2xl font-bold text-gray-900 leading-tight">Gestão de Equipe</h2></div>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-bold text-gray-600 shadow-sm w-fit">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {acolitos.length} Membros
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> {acolitos.length} Membros
                 </div>
             </div>
 
@@ -515,20 +517,21 @@ export default function AcolitosPage() {
                 
                 <div className="lg:col-span-3 space-y-6">
                     
+                    {/* PAINEL DE PARÂMETROS DE NOTIFICAÇÃO */}
                     {canManage && (
                         <div className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                                 <div>
                                     <h3 className="font-bold text-gray-900 flex items-center gap-2"><Settings2 size={18} className="text-blue-600"/> Parâmetros de Notificação</h3>
                                     <p className="text-xs text-gray-500 mt-0.5">Configure a antecedência dos alertas automáticos e envie comunicados.</p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setIsCustomMailModalOpen(true)} className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
-                                        <AlertCircle size={14}/>Enviar Avisos
-                                    </button>
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <button onClick={() => setIsSendModalOpen(true)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
-                                        <List size={14}/> Enviar Escalas
+                                        <Send size={14}/> Disparar Escalas
+                                    </button>
+                                    <button onClick={() => setIsCustomMailModalOpen(true)} className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
+                                        <MessageSquare size={14}/> Comunicado
                                     </button>
                                     <button onClick={() => setIsTestModalOpen(true)} className="bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition">
                                         <Timer size={14}/> Teste de Envio
@@ -552,7 +555,7 @@ export default function AcolitosPage() {
                                     </div>
                                 </div>
                                 <div className="flex items-end">
-                                    <button onClick={saveConfigNotif} className="w-full bg-gray-900 hover:bg-black text-white font-bold py-2 rounded-xl transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                                    <button onClick={saveConfigNotif} className="w-full bg-slate-900 hover:bg-black text-white font-medium py-2 rounded-xl transition active:scale-95 flex items-center justify-center gap-2 text-sm">
                                         <Save size={15}/> Salvar Parâmetros
                                     </button>
                                 </div>
@@ -560,6 +563,7 @@ export default function AcolitosPage() {
                         </div>
                     )}
 
+                    {/* Search e Ações Gerais */}
                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
                         <div className="relative w-full md:w-80 lg:w-96">
                             <Search className="absolute left-3 top-2.5 text-gray-400" size={18}/>
@@ -567,10 +571,10 @@ export default function AcolitosPage() {
                         </div>
                         {canManage && (
                             <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:w-auto px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
+                                <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:w-auto px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
                                     <FileText size={18}/> <span className="hidden sm:inline">Relatórios</span>
                                 </button>
-                                <button onClick={openNewForm} className="flex-1 md:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20">
+                                <button onClick={openNewForm} className="flex-1 md:w-auto px-4 py-2.5 bg-green-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
                                     <Plus size={18}/> <span>Registrar</span>
                                 </button>
                             </div>
@@ -586,19 +590,19 @@ export default function AcolitosPage() {
                                     <div className="p-4 pb-14"> 
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                                                <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold bg-blue-50 text-blue-700 border border-blue-100">
                                                     {acolito.nome?.substring(0,2).toUpperCase()}
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-bold text-gray-900 text-sm leading-tight group-hover:text-blue-600 transition-colors">{acolito.nome} {acolito.sobrenome}</h3>
+                                                    <h3 className="font-semibold text-gray-900 text-sm leading-tight group-hover:text-blue-600 transition-colors">{acolito.nome} {acolito.sobrenome}</h3>
                                                     <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                                         {acolito.email ? (
                                                             <span title={acolito.email} className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><BellRing size={10}/> Alertas Ativos</span>
                                                         ) : (
                                                             <span className="text-[9px] font-bold text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Mail size={10}/> Sem E-mail</span>
                                                         )}
-                                                        {acolito.perfil !== 'padrao' && <span className="text-[9px] font-bold text-purple-700 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Shield size={10}/> {acolito.perfil}</span>}
-                                                        {acolito.parceiro_id && <span className="text-[9px] font-bold text-pink-700 bg-pink-100 border border-pink-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Heart size={10}/> Dupla</span>}
+                                                        {acolito.perfil !== 'padrao' && <span className="text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Shield size={10}/> {acolito.perfil}</span>}
+                                                        {acolito.parceiro_id && <span className="text-[9px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><Heart size={10}/> Dupla</span>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -608,10 +612,10 @@ export default function AcolitosPage() {
                                         </div>
                                     </div>
                                     <div className={`absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-100 h-11 flex items-center justify-around transition-transform duration-200 z-10 ${canManage ? 'translate-y-full group-hover:translate-y-0' : ''}`}>
-                                        <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title="FDS" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.apenas_fim_de_semana ? 'text-yellow-600' : 'text-gray-400'}`}><CalendarClock size={16}/></button>
-                                        <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.manuseia_missal ? 'text-blue-600' : 'text-gray-400'}`}><BookOpen size={16}/></button>
+                                        <button onClick={(e) => handleQuickToggle(e, acolito.id, 'apenas_fim_de_semana', acolito.apenas_fim_de_semana)} title="FDS" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.apenas_fim_de_semana ? 'text-amber-500' : 'text-gray-400'}`}><CalendarClock size={16}/></button>
+                                        <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_missal', acolito.manuseia_missal)} title="Missal" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.manuseia_missal ? 'text-blue-500' : 'text-gray-400'}`}><BookOpen size={16}/></button>
                                         <button onClick={(e) => handleQuickToggle(e, acolito.id, 'manuseia_turibulo', acolito.manuseia_turibulo)} title="Turíbulo" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 border-r border-gray-200/50 ${acolito.manuseia_turibulo ? 'text-orange-500' : 'text-gray-400'}`}><Flame size={16}/></button>
-                                        <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} title="Status" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 ${acolito.ativo ? 'text-green-500' : 'text-red-500'}`}><CheckCircle2 size={16}/></button>
+                                        <button onClick={(e) => toggleStatus(e, acolito.id, acolito.ativo)} title="Status" className={`flex-1 h-full flex justify-center items-center transition hover:bg-gray-100 ${acolito.ativo ? 'text-emerald-500' : 'text-red-500'}`}><CheckCircle2 size={16}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -621,9 +625,9 @@ export default function AcolitosPage() {
 
                 <aside className="lg:col-span-1 lg:sticky lg:top-8 space-y-4">
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-                        <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                        <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
                             <Cake size={18} className="text-pink-600" />
-                            <h3 className="font-bold text-xs uppercase tracking-widest text-gray-600">Aniversariantes</h3>
+                            <h3 className="font-semibold text-xs uppercase tracking-widest text-gray-700">Aniversariantes</h3>
                         </div>
                         <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto [scrollbar-width:none]">
                             {hoje.length > 0 && (
@@ -631,8 +635,8 @@ export default function AcolitosPage() {
                                     <span className="text-[10px] font-bold text-pink-600 uppercase tracking-wider block">Aniversário do Dia</span>
                                     {hoje.map(aniv => (
                                         <div key={aniv.id} className="bg-pink-50 border border-pink-200 p-3 rounded-xl flex items-center gap-3 shadow-sm">
-                                            <div className="flex flex-col items-center justify-center bg-pink-500 text-white w-10 h-10 rounded-lg shrink-0 shadow-md shadow-pink-500/20"><span className="text-sm font-black leading-none">{aniv.dia}</span><span className="text-[8px] uppercase font-bold">{aniv.mesNome}</span></div>
-                                            <div className="min-w-0"><p className="text-sm font-bold text-gray-900 truncate">{aniv.nome}</p><span className="text-[10px] font-bold text-pink-600 flex items-center gap-1"><PartyPopper size={12}/> Parabéns!</span></div>
+                                            <div className="flex flex-col items-center justify-center bg-pink-500 text-white w-10 h-10 rounded-lg shrink-0 shadow-sm"><span className="text-sm font-black leading-none">{aniv.dia}</span><span className="text-[8px] uppercase font-bold">{aniv.mesNome}</span></div>
+                                            <div className="min-w-0"><p className="text-sm font-semibold text-gray-900 truncate">{aniv.nome}</p><span className="text-[10px] font-bold text-pink-600 flex items-center gap-1"><PartyPopper size={12}/> Parabéns!</span></div>
                                         </div>
                                     ))}
                                 </div>
@@ -644,9 +648,9 @@ export default function AcolitosPage() {
                                 ) : (
                                     <div className="space-y-2">
                                         {proximos.map(aniv => (
-                                            <div key={aniv.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-100 group">
-                                                <div className="flex flex-col items-center justify-center bg-white border border-gray-200 text-gray-500 w-9 h-9 rounded-lg shrink-0 group-hover:border-gray-300 transition-colors"><span className="text-xs font-bold leading-none text-gray-700">{aniv.dia}</span><span className="text-[7px] uppercase font-bold">{aniv.mesNome}</span></div>
-                                                <div className="min-w-0"><p className="text-xs font-bold text-gray-700 group-hover:text-gray-900 truncate transition-colors">{aniv.nome} {aniv.sobrenome}</p></div>
+                                            <div key={aniv.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-200 group">
+                                                <div className="flex flex-col items-center justify-center bg-white border border-gray-200 text-gray-600 w-9 h-9 rounded-lg shrink-0 group-hover:border-gray-300 transition-colors shadow-sm"><span className="text-xs font-bold leading-none">{aniv.dia}</span><span className="text-[7px] uppercase font-bold">{aniv.mesNome}</span></div>
+                                                <div className="min-w-0"><p className="text-xs font-medium text-gray-700 group-hover:text-gray-900 truncate transition-colors">{aniv.nome} {aniv.sobrenome}</p></div>
                                             </div>
                                         ))}
                                     </div>
@@ -660,10 +664,10 @@ export default function AcolitosPage() {
 
           {/* MODAL COMUNICADO CUSTOMIZADO */}
           {isCustomMailModalOpen && (
-              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden">
-                  <div className="bg-white border border-gray-200 w-full max-w-lg rounded-3xl shadow-2xl flex flex-col relative max-h-[90vh] overflow-hidden animate-in zoom-in-95">
-                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50/50 shrink-0">
-                          <h2 className="text-base font-bold flex items-center gap-2 text-gray-900">
+              <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-white border border-gray-200 w-full max-w-lg rounded-3xl shadow-xl flex flex-col relative max-h-[90vh] animate-in zoom-in-95">
+                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50/50 shrink-0 rounded-t-3xl">
+                          <h2 className="text-base font-semibold flex items-center gap-2 text-gray-900">
                               <MessageSquare size={18} className="text-blue-600"/> Enviar Comunicado
                           </h2>
                           <button onClick={() => setIsCustomMailModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={18}/></button>
@@ -671,24 +675,24 @@ export default function AcolitosPage() {
 
                       <div className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none]">
                           <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Para quem enviar?</label>
+                              <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Para quem enviar?</label>
                               <select 
                                   value={customMailForm.destinatario} 
                                   onChange={e => setCustomMailForm({...customMailForm, destinatario: e.target.value})}
-                                  className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition"
+                                  className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition"
                               >
-                                  <option value="todos">Todos os Acólitos (Com e-mail)</option>
-                                  <option value="especifico">Acólito Específico</option>
+                                  <option value="todos">Todos os Acólitos (Com e-mail cadastrado)</option>
+                                  <option value="especifico">Um Acólito Específico</option>
                               </select>
                           </div>
 
                           {customMailForm.destinatario === 'especifico' && (
                               <div>
-                                  <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Selecione o Acólito</label>
+                                  <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Selecione o Acólito</label>
                                   <select 
                                       value={customMailForm.acolitoId} 
                                       onChange={e => setCustomMailForm({...customMailForm, acolitoId: e.target.value})}
-                                      className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition"
+                                      className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition"
                                   >
                                       <option value="">Selecione...</option>
                                       {acolitos.filter(a => a.email && a.ativo).map(a => (
@@ -699,31 +703,31 @@ export default function AcolitosPage() {
                           )}
 
                           <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Assunto do E-mail</label>
+                              <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Assunto do E-mail</label>
                               <input 
                                   type="text" 
                                   placeholder="Ex: Aviso sobre a Missa de Quinta-feira" 
                                   value={customMailForm.assunto} 
                                   onChange={e => setCustomMailForm({...customMailForm, assunto: e.target.value})}
-                                  className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition"
+                                  className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition"
                               />
                           </div>
 
                           <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Conteúdo da Mensagem</label>
+                              <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Conteúdo da Mensagem</label>
                               <textarea 
                                   rows={5} 
                                   placeholder="Escreva seu comunicado aqui..." 
                                   value={customMailForm.mensagem} 
                                   onChange={e => setCustomMailForm({...customMailForm, mensagem: e.target.value})}
-                                  className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition resize-none"
+                                  className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition resize-none"
                               />
                           </div>
 
                           <button 
                               onClick={handleSendCustomEmail} 
                               disabled={loading} 
-                              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2 mt-2"
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2 mt-2"
                           >
                               <Send size={18} /> Disparar Comunicado
                           </button>
@@ -734,36 +738,36 @@ export default function AcolitosPage() {
 
           {/* MODAL SIMULADOR / TESTE DE NOTIFICAÇÃO */}
           {isTestModalOpen && (
-              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden">
-                  <div className="bg-white border border-gray-200 w-full max-w-sm rounded-3xl shadow-2xl flex flex-col relative overflow-hidden animate-in zoom-in-95">
-                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-slate-100/80 shrink-0">
-                          <h2 className="text-base font-bold flex items-center gap-2 text-gray-900">
-                              <Timer size={18} className="text-slate-600"/>Teste de Envio
+              <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-white border border-gray-200 w-full max-w-sm rounded-3xl shadow-xl flex flex-col relative animate-in zoom-in-95">
+                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-slate-100/80 shrink-0 rounded-t-3xl">
+                          <h2 className="text-base font-semibold flex items-center gap-2 text-slate-800">
+                              <Timer size={18} className="text-slate-600"/> Apenas Teste de Envio
                           </h2>
                           <button onClick={() => { setIsTestModalOpen(false); cancelarTeste(); }} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={18}/></button>
                       </div>
 
-                      <div className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none]">
+                      <div className="p-6 space-y-4">
                           {testCountdown !== null ? (
                               <div className="text-center py-4">
-                                  <div className="w-16 h-16 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center mx-auto mb-3 border-2 border-slate-300 animate-pulse">
+                                  <div className="w-16 h-16 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center mx-auto mb-3 border border-slate-200 animate-pulse shadow-sm">
                                       <span className="text-xl font-black">{Math.floor(testCountdown / 60)}:{(testCountdown % 60).toString().padStart(2, '0')}</span>
                                   </div>
-                                  <h3 className="font-bold text-gray-900 text-sm">Contagem de teste iniciada</h3>
+                                  <h3 className="font-semibold text-gray-900 text-sm">Contagem iniciada</h3>
                                   <p className="text-xs text-gray-500 mt-1">O e-mail será enviado automaticamente ao zerar.</p>
-                                  <button onClick={cancelarTeste} className="mt-4 text-xs font-bold text-red-500 hover:text-red-700 transition">Cancelar Teste</button>
+                                  <button onClick={cancelarTeste} className="mt-5 text-xs font-semibold text-red-500 hover:text-red-700 transition px-4 py-2 bg-red-50 rounded-lg">Cancelar Teste</button>
                               </div>
                           ) : (
                               <>
                                   <div>
-                                      <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">E-mail para Teste</label>
-                                      <input type="email" placeholder="Seu e-mail aqui" value={testForm.email} onChange={e => setTestForm({...testForm, email: e.target.value})} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-slate-500 transition" />
+                                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">E-mail para Teste</label>
+                                      <input type="email" placeholder="Seu e-mail aqui" value={testForm.email} onChange={e => setTestForm({...testForm, email: e.target.value})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-slate-500 focus:ring-2 focus:ring-slate-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                                   </div>
                                   <div>
-                                      <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Tempo de Espera (Minutos)</label>
-                                      <input type="number" min="1" max="60" value={testForm.minutos} onChange={e => setTestForm({...testForm, minutos: Number(e.target.value)})} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-slate-500 transition" />
+                                      <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Tempo de Espera (Minutos)</label>
+                                      <input type="number" min="1" max="60" value={testForm.minutos} onChange={e => setTestForm({...testForm, minutos: Number(e.target.value)})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-slate-500 focus:ring-2 focus:ring-slate-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                                   </div>
-                                  <button onClick={iniciarTesteTimer} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2 text-sm mt-2">
+                                  <button onClick={iniciarTesteTimer} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm mt-2">
                                       <Play size={16} /> Iniciar Teste
                                   </button>
                               </>
@@ -775,37 +779,37 @@ export default function AcolitosPage() {
 
           {/* MODAL DE DISPARAR ESCALAS */}
           {isSendModalOpen && (
-              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden">
-                  <div className="bg-white border border-gray-200 w-full max-w-md rounded-3xl shadow-2xl flex flex-col relative overflow-hidden animate-in zoom-in-95">
-                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-blue-50/50 shrink-0">
-                          <h2 className="text-base font-bold flex items-center gap-2 text-gray-900">
-                              <Send size={18} className="text-blue-600"/> Enviar Escalas
+              <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-white border border-gray-200 w-full max-w-md rounded-3xl shadow-xl flex flex-col relative max-h-[90vh] animate-in zoom-in-95">
+                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-indigo-50/50 shrink-0 rounded-t-3xl">
+                          <h2 className="text-base font-semibold flex items-center gap-2 text-indigo-900">
+                              <Send size={18} className="text-indigo-600"/> Enviar Escalas
                           </h2>
                           <button onClick={() => setIsSendModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={18}/></button>
                       </div>
 
                       <div className="p-6 space-y-5 overflow-y-auto [scrollbar-width:none]">
                           <div>
-                              <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Qual mês enviar?</label>
-                              <input type="month" value={sendMonth} onChange={e => setSendMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-xl p-3 text-sm text-gray-900 outline-none focus:border-blue-600 transition" />
+                              <label className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Mês de Referência</label>
+                              <input type="month" value={sendMonth} onChange={e => setSendMonth(e.target.value)} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                           </div>
 
                           <div>
-                              <p className="text-[11px] font-bold text-gray-500 uppercase block mb-1">Formato de Envio</p>
+                              <p className="text-[11px] font-semibold text-gray-500 uppercase block mb-1">Formato de Envio</p>
                               <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-                                  <button onClick={() => setSendMode('individual')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${sendMode === 'individual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                                  <button onClick={() => setSendMode('individual')} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${sendMode === 'individual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                                       Para Cada Um (Individual)
                                   </button>
-                                  <button onClick={() => setSendMode('geral')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${sendMode === 'geral' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                                  <button onClick={() => setSendMode('geral')} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${sendMode === 'geral' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                                       Geral (Lista Completa)
                                   </button>
                               </div>
-                              <p className="text-[11px] text-gray-500 mt-2 text-center">
+                              <p className="text-[11px] text-gray-500 mt-2 text-center leading-relaxed">
                                   {sendMode === 'individual' ? 'Cada acólito receberá um e-mail contendo apenas as missas dele, com botão de salvar no calendário.' : 'Todos receberão um único e-mail com a lista de todas as missas e equipes do mês.'}
                               </p>
                           </div>
 
-                          <button onClick={handleDispararEscalas} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2">
+                          <button onClick={handleDispararEscalas} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2">
                               <Send size={18} /> Disparar Agora
                           </button>
                       </div>
@@ -815,10 +819,10 @@ export default function AcolitosPage() {
 
           {/* MODAL DE RELATÓRIOS */}
           {isReportModalOpen && (
-              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden">
-                  <div className="bg-white border border-gray-200 w-full max-w-md rounded-3xl shadow-2xl flex flex-col relative overflow-hidden animate-in zoom-in-95">
-                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
-                          <h2 className="text-base font-bold flex items-center gap-2 text-gray-900">
+              <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-white border border-gray-200 w-full max-w-md rounded-3xl shadow-xl flex flex-col relative max-h-[90vh] animate-in zoom-in-95">
+                      <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0 rounded-t-3xl">
+                          <h2 className="text-base font-semibold flex items-center gap-2 text-gray-900">
                               <FileText size={18} className="text-gray-600"/> Gerar Relatórios
                           </h2>
                           <button onClick={() => setIsReportModalOpen(false)} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={18}/></button>
@@ -826,15 +830,15 @@ export default function AcolitosPage() {
 
                       <div className="p-6 space-y-5 overflow-y-auto [scrollbar-width:none]">
                           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-                              <button onClick={() => setReportTab('niver')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${reportTab === 'niver' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Aniversariantes</button>
-                              <button onClick={() => setReportTab('dados')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${reportTab === 'dados' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Dados Cadastrais</button>
+                              <button onClick={() => setReportTab('niver')} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${reportTab === 'niver' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Aniversariantes</button>
+                              <button onClick={() => setReportTab('dados')} className={`flex-1 py-2 rounded-lg text-xs font-semibold transition ${reportTab === 'dados' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Dados Cadastrais</button>
                           </div>
 
                           {reportTab === 'niver' && (
                               <div className="space-y-4">
-                                  <p className="text-xs text-gray-600 leading-relaxed">Gera uma lista com as datas de aniversário de todos os membros ativos.</p>
-                                  <button onClick={generateBirthdayReport} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2 text-sm">
-                                      <Download size={16} /> Baixar PDF
+                                  <p className="text-xs text-gray-600 leading-relaxed text-center bg-gray-50 p-3 rounded-lg border border-gray-100">Gera uma lista com as datas de aniversário de todos os membros ativos.</p>
+                                  <button onClick={generateBirthdayReport} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                                      <Download size={16} /> Baixar Arquivo PDF
                                   </button>
                               </div>
                           )}
@@ -842,32 +846,32 @@ export default function AcolitosPage() {
                           {reportTab === 'dados' && (
                               <div className="space-y-4">
                                   <div>
-                                      <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wide mb-2">Quais dados incluir no PDF?</p>
+                                      <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-2">Quais dados incluir no PDF?</p>
                                       <div className="grid grid-cols-2 gap-2">
-                                          <label className="flex items-center gap-2 p-2.5 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer">
-                                              <input type="checkbox" checked disabled className="w-3.5 h-3.5 accent-gray-800 rounded"/>
-                                              <span className="text-xs font-bold text-gray-900">Nome</span>
+                                          <label className="flex items-center gap-2 p-2.5 bg-gray-50 border border-gray-200 rounded-xl cursor-not-allowed">
+                                              <input type="checkbox" checked disabled className="w-3.5 h-3.5 accent-slate-800 rounded"/>
+                                              <span className="text-xs font-semibold text-gray-900">Nome</span>
                                           </label>
-                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-400 transition">
-                                              <input type="checkbox" checked={reportCols.telefone} onChange={e => setReportCols({...reportCols, telefone: e.target.checked})} className="w-3.5 h-3.5 accent-gray-800 rounded"/>
+                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 transition">
+                                              <input type="checkbox" checked={reportCols.telefone} onChange={e => setReportCols({...reportCols, telefone: e.target.checked})} className="w-3.5 h-3.5 accent-slate-800 rounded"/>
                                               <span className="text-xs font-medium text-gray-700">Telefone</span>
                                           </label>
-                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-400 transition">
-                                              <input type="checkbox" checked={reportCols.usuario} onChange={e => setReportCols({...reportCols, usuario: e.target.checked})} className="w-3.5 h-3.5 accent-gray-800 rounded"/>
+                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 transition">
+                                              <input type="checkbox" checked={reportCols.usuario} onChange={e => setReportCols({...reportCols, usuario: e.target.checked})} className="w-3.5 h-3.5 accent-slate-800 rounded"/>
                                               <span className="text-xs font-medium text-gray-700">Usuário</span>
                                           </label>
-                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-400 transition">
-                                              <input type="checkbox" checked={reportCols.perfil} onChange={e => setReportCols({...reportCols, perfil: e.target.checked})} className="w-3.5 h-3.5 accent-gray-800 rounded"/>
+                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 transition">
+                                              <input type="checkbox" checked={reportCols.perfil} onChange={e => setReportCols({...reportCols, perfil: e.target.checked})} className="w-3.5 h-3.5 accent-slate-800 rounded"/>
                                               <span className="text-xs font-medium text-gray-700">Perfil</span>
                                           </label>
-                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-400 transition col-span-2">
-                                              <input type="checkbox" checked={reportCols.liturgia} onChange={e => setReportCols({...reportCols, liturgia: e.target.checked})} className="w-3.5 h-3.5 accent-gray-800 rounded"/>
+                                          <label className="flex items-center gap-2 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300 transition col-span-2">
+                                              <input type="checkbox" checked={reportCols.liturgia} onChange={e => setReportCols({...reportCols, liturgia: e.target.checked})} className="w-3.5 h-3.5 accent-slate-800 rounded"/>
                                               <span className="text-xs font-medium text-gray-700">Liturgia</span>
                                           </label>
                                       </div>
                                   </div>
-                                  <button onClick={generateDataReport} className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2 text-sm">
-                                      <Download size={16} /> Baixar PDF
+                                  <button onClick={generateDataReport} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                                      <Download size={16} /> Baixar Arquivo PDF
                                   </button>
                               </div>
                           )}
@@ -878,11 +882,11 @@ export default function AcolitosPage() {
 
           {/* MODAL DE CADASTRO/EDIÇÃO */}
           {isFormOpen && (
-            <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden">
-               <div className="bg-white border border-gray-200 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden animate-in zoom-in-95">
+            <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="bg-white border border-gray-200 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-xl flex flex-col relative overflow-hidden animate-in zoom-in-95">
                   
-                  <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-white/95 shrink-0">
-                      <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900">
+                  <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-white shrink-0 rounded-t-3xl">
+                      <h2 className="text-base font-semibold flex items-center gap-2 text-gray-900">
                         {editingId ? <Edit2 size={18} className="text-blue-600"/> : <User size={18} className="text-blue-600"/>} 
                         {editingId ? 'Editar Membro' : 'Novo Membro'}
                       </h2>
@@ -892,34 +896,34 @@ export default function AcolitosPage() {
                   <div className="p-6 space-y-5 overflow-y-auto [scrollbar-width:none]">
                       <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Nome</label>
-                              <input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm" />
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Nome</label>
+                              <input value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                           </div>
                           <div>
-                              <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Sobrenome</label>
-                              <input value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm" />
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sobrenome</label>
+                              <input value={form.sobrenome} onChange={e => setForm({...form, sobrenome: e.target.value})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                           </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Gênero</label>
-                            <select value={form.genero} onChange={e => setForm({...form, genero: e.target.value})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Gênero</label>
+                            <select value={form.genero} onChange={e => setForm({...form, genero: e.target.value})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition">
                                 <option value="M">Masculino</option><option value="F">Feminino</option>
                             </select>
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Usuário</label>
-                            <input value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm" />
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Usuário</label>
+                            <input value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Nascimento (DD/MM)</label>
-                            <input value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm" />
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Nascimento (DD/MM)</label>
+                            <input value={form.data_nascimento} onChange={handleDateChange} placeholder="Ex: 15/08" maxLength={5} className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-3 text-sm text-gray-900 outline-none transition" />
                         </div>
                       </div>
 
                       <div>
-                          <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">E-mail (Alertas Automáticos)</label>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">E-mail (Alertas Automáticos)</label>
                           <div className="relative">
                               <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                               <input 
@@ -927,35 +931,35 @@ export default function AcolitosPage() {
                                   value={form.email} 
                                   onChange={e => setForm({...form, email: e.target.value.toLowerCase().trim()})} 
                                   placeholder="Opcional. Ex: joao@gmail.com" 
-                                  className="w-full p-3 pl-10 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none text-gray-900 transition text-sm" 
+                                  className="w-full pl-9 pr-3 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-sm text-gray-900" 
                               />
                           </div>
                       </div>
 
-                      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 space-y-3">
+                      <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100 space-y-3">
                         <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest flex items-center gap-1"><Flame size={14}/> Liturgia & Disponibilidade</span>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-500 transition">
-                                <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="w-4 h-4 accent-orange-600 rounded"/>
+                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-400 transition">
+                                <input type="checkbox" checked={form.manuseia_missal} onChange={e => setForm({...form, manuseia_missal: e.target.checked})} className="w-3.5 h-3.5 accent-orange-600 rounded"/>
                                 <span className="text-xs font-medium text-gray-700">Missal</span>
                             </label>
-                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-500 transition">
-                                <input type="checkbox" checked={form.manuseia_turibulo} onChange={e => setForm({...form, manuseia_turibulo: e.target.checked})} className="w-4 h-4 accent-orange-600 rounded"/>
+                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-orange-400 transition">
+                                <input type="checkbox" checked={form.manuseia_turibulo} onChange={e => setForm({...form, manuseia_turibulo: e.target.checked})} className="w-3.5 h-3.5 accent-orange-600 rounded"/>
                                 <span className="text-xs font-medium text-gray-700">Turíbulo</span>
                             </label>
-                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-blue-500 transition">
-                                <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="w-4 h-4 accent-blue-600 rounded"/>
+                            <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-gray-200 cursor-pointer hover:border-amber-400 transition">
+                                <input type="checkbox" checked={form.apenas_fim_de_semana} onChange={e => setForm({...form, apenas_fim_de_semana: e.target.checked})} className="w-3.5 h-3.5 accent-amber-600 rounded"/>
                                 <span className="text-xs font-medium text-gray-700">Só FDS</span>
                             </label>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-3">
+                        <div className="grid grid-cols-2 gap-4 border-t border-orange-100 pt-3">
                             <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Início Disponibilidade</label>
-                                <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2 rounded-lg bg-white border border-gray-300 text-xs text-gray-900 focus:border-blue-600 outline-none transition" />
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Início Disponibilidade</label>
+                                <input type="time" value={form.disponivel_inicio} onChange={e => setForm({...form, disponivel_inicio: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Fim Disponibilidade</label>
-                                <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2 rounded-lg bg-white border border-gray-300 text-xs text-gray-900 focus:border-blue-600 outline-none transition" />
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase flex items-center gap-1 mb-1"><Clock size={12}/> Fim Disponibilidade</label>
+                                <input type="time" value={form.disponivel_fim} onChange={e => setForm({...form, disponivel_fim: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-900 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
                             </div>
                         </div>
                       </div>
@@ -964,14 +968,14 @@ export default function AcolitosPage() {
                         <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><Settings size={14}/> Configurações de Sistema</span>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Perfil de Acesso</label>
-                                 <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-300 text-xs text-gray-900 focus:border-blue-600 outline-none transition">
+                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Perfil de Acesso</label>
+                                 <select value={form.perfil} onChange={e => setForm({...form, perfil: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition">
                                     <option value="padrao">Acólito (Padrão)</option><option value="diretoria">Diretoria</option><option value="admin">Administrador</option>
                                  </select>
                             </div>
                             <div>
-                                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Dupla / Parceiro Fixo</label>
-                                 <select value={form.parceiro_id} onChange={e => setForm({...form, parceiro_id: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-300 text-xs text-gray-900 focus:border-blue-600 outline-none transition">
+                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Dupla / Parceiro Fixo</label>
+                                 <select value={form.parceiro_id} onChange={e => setForm({...form, parceiro_id: e.target.value})} className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition">
                                     <option value="">Nenhum</option>
                                     {acolitos.filter(a => a.id !== editingId).map(a => <option key={a.id} value={a.id}>{a.nome} {a.sobrenome}</option>)}
                                  </select>
@@ -984,7 +988,7 @@ export default function AcolitosPage() {
                             <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1"><LockKeyhole size={12}/> Módulos Liberados</span>
                             <div className="flex flex-wrap gap-2">
                                 {MODULES.map(mod => (
-                                    <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${form.acessos.includes(mod.id) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                                    <button key={mod.id} onClick={() => toggleAccess(mod.id)} className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${form.acessos.includes(mod.id) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
                                         {mod.label}
                                     </button>
                                 ))}
@@ -993,8 +997,8 @@ export default function AcolitosPage() {
                       )}
                   </div>
 
-                  <div className="p-4 border-t border-gray-100 bg-gray-50/80 shrink-0 rounded-b-3xl">
-                      <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                  <div className="p-5 border-t border-gray-100 bg-gray-50/80 shrink-0 rounded-b-3xl">
+                      <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm">
                           <Save size={18} /> {editingId ? 'Salvar Alterações' : 'Cadastrar Membro'}
                       </button>
                   </div>

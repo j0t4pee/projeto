@@ -7,7 +7,7 @@ import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/fire
 import { 
     Lock, AtSign, ArrowRight, Download, X, FileText, 
     CheckCircle2, AlertCircle, UserCog, ChevronLeft, 
-    BellRing, Info, AlertTriangle, Mail
+    BellRing, Info, AlertTriangle, Mail, UserCircle
 } from 'lucide-react'
 
 const PLACE_SIGLA: { [key: string]: string } = {
@@ -30,17 +30,14 @@ export default function LoginPage() {
   
   const [showLoginForm, setShowLoginForm] = useState(false)
 
-  // Modais
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   
-  // PDF States
   const [pdfMonth, setPdfMonth] = useState(new Date().toISOString().slice(0, 7))
   const [currentMonthName, setCurrentMonthName] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadMessage, setDownloadMessage] = useState({ type: '', text: '' })
 
-  // Email Cadastro States
   const [acolitosAtivos, setAcolitosAtivos] = useState<any[]>([])
   const [emailMessage, setEmailMessage] = useState({ type: '', text: '' })
   const [emailForm, setEmailForm] = useState({ acolitoId: '', email: '' })
@@ -63,14 +60,12 @@ export default function LoginPage() {
       const capitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1)
       setCurrentMonthName(capitalized)
 
-      // Busca acólitos (APENAS OS QUE NÃO TÊM E-MAIL)
       const fetchAcolitos = async () => {
           try {
               const q = query(collection(db, 'acolitos'), where('ativo', '==', true))
               const snap = await getDocs(q)
               const list = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]
               
-              // Filtro mágico: Só passa quem NÃO tem o campo email preenchido
               const listSemEmail = list.filter(a => !a.email || a.email.trim() === '')
               listSemEmail.sort((a, b) => a.nome.localeCompare(b.nome))
               
@@ -147,18 +142,18 @@ export default function LoginPage() {
         const acolitoSelecionado = acolitosAtivos.find(a => a.id === emailForm.acolitoId)
         if (!acolitoSelecionado) throw new Error('Acólito não encontrado.')
 
-        // 1. Atualiza o e-mail no banco de dados
         await updateDoc(doc(db, 'acolitos', acolitoSelecionado.id), { 
             email: emailForm.email 
         })
 
-        // 2. Busca as escalas futuras deste acólito
         const todayStr = new Date().toISOString().split('T')[0]
         const qEscalas = query(collection(db, 'escalas'), where("data", ">=", todayStr))
         const snapEscalas = await getDocs(qEscalas)
         
         const minhasEscalas: any[] = []
-        const nomeBusca = acolitoSelecionado.nome.trim().toLowerCase()
+        
+        const normalizeStr = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ')
+        const nomeCompleto = normalizeStr(`${acolitoSelecionado.nome || ''} ${acolitoSelecionado.sobrenome || ''}`)
         
         snapEscalas.forEach(docSnap => {
             const dataEscala = docSnap.data()
@@ -167,8 +162,9 @@ export default function LoginPage() {
             const meuRegistro = listaEscalados.find((a: any) => {
                 if (!a) return false
                 if (a.id === acolitoSelecionado.id || a.acolitoId === acolitoSelecionado.id) return true
-                const nomeEscala = (a.nome || '').trim().toLowerCase()
-                return nomeEscala === nomeBusca || nomeBusca.includes(nomeEscala.replace('.', ''))
+                
+                const nomeEscala = normalizeStr(a.nome || '')
+                return nomeEscala === nomeCompleto 
             })
             
             if (meuRegistro) {
@@ -183,18 +179,17 @@ export default function LoginPage() {
 
         minhasEscalas.sort((a, b) => new Date(`${a.data}T${a.hora||'00:00'}`).getTime() - new Date(`${b.data}T${b.hora||'00:00'}`).getTime())
 
-        // 3. Monta o texto do E-mail (Layout Compacto)
         const primeiroNome = acolitoSelecionado.nome.split(' ')[0]
         
         let htmlEmail = `
-            <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 15px; font-family: Arial, sans-serif;">
                 <p style="font-size: 15px; margin: 0 0 5px 0; color: #1f2937;">Olá, <b>${primeiroNome}</b>!</p>
                 <p style="font-size: 13px; margin: 0; color: #475569;">Seu e-mail foi cadastrado para receber alertas de missas.</p>
             </div>
         `
         
         if (minhasEscalas.length > 0) {
-            htmlEmail += `<h3 style="color: #1f2937; margin: 0 0 10px 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">📅 Suas Próximas Escalas (${minhasEscalas.length})</h3>`
+            htmlEmail += `<h3 style="color: #1f2937; margin: 0 0 10px 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; font-family: Arial, sans-serif;">Suas Próximas Escalas (${minhasEscalas.length})</h3>`
             
             minhasEscalas.forEach(esc => {
                 const dataFormatada = esc.data.split('-').reverse().join('/')
@@ -212,32 +207,31 @@ export default function LoginPage() {
                 const gCalUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${startTime}/${endTime}&details=${details}&location=${location}`
 
                 htmlEmail += `
-                    <div style="margin-bottom: 8px; padding: 10px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2563eb; border-radius: 6px;">
+                    <div style="margin-bottom: 8px; padding: 10px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #2563eb; border-radius: 6px; font-family: Arial, sans-serif;">
                         <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #0f172a;">
                             ${dataFormatada} às ${horaMissa}
                         </p>
-                        <p style="margin: 0 0 8px 0; color: #475569; font-size: 13px;">
-                            📍 ${esc.local} &nbsp;|&nbsp; 👕 Função: <b>${esc.funcao || 'Padrão'}</b>
+                        <p style="margin: 0 0 8px 0; color: #475569; font-size: 12px;">
+                            <b>Local:</b> ${esc.local} &nbsp;|&nbsp; <b>Função:</b> ${esc.funcao || 'Padrão'}
                         </p>
-                        <a href="${gCalUrl}" target="_blank" style="background-color: #16a34a; color: #ffffff; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block;">
-                            + Salvar na Agenda
+                        <a href="${gCalUrl}" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block;">
+                            Adicionar ao Calendário
                         </a>
                     </div>
                 `
             })
         } else {
-            htmlEmail += `<p style="margin: 10px 0; font-size: 13px; color: #475569;">Você não possui escalas futuras agendadas.</p>`
+            htmlEmail += `<p style="margin: 10px 0; font-size: 13px; color: #475569; font-family: Arial, sans-serif;">Você não possui escalas futuras agendadas.</p>`
         }
         
         htmlEmail += `
-            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
-                <p style="font-size: 11px; color: #64748b; margin: 0;">Você será avisado 24h e 3h antes de cada missa.</p>
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-family: Arial, sans-serif;">
+                <p style="font-size: 11px; color: #64748b; margin: 0;">Você será avisado automaticamente pelo sistema de escalas da Paróquia.</p>
             </div>
         `
 
         const emailBodyLimpo = htmlEmail.replace(/\n/g, '').replace(/\s+/g, ' ')
 
-        // 4. Dispara o e-mail
         const res = await fetch('/api/enviar-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -250,13 +244,12 @@ export default function LoginPage() {
 
         if (!res.ok) {
             const errorData = await res.json().catch(() => ({}))
-            throw new Error(errorData.error || "Falha ao enviar e-mail. Verifique as credenciais no servidor.")
+            throw new Error(errorData.error || "Falha ao enviar e-mail.")
         }
 
-        // Remove o acólito da lista na mesma hora (para ele sumir do seletor)
         setAcolitosAtivos(prev => prev.filter(a => a.id !== emailForm.acolitoId))
 
-        setEmailMessage({ type: 'success', text: `Enviado! ${minhasEscalas.length} escalas foram pro seu e-mail.` })
+        setEmailMessage({ type: 'success', text: `Enviado! ${minhasEscalas.length} escala(s) no seu e-mail.` })
         setTimeout(() => { 
             setIsEmailModalOpen(false)
             setEmailMessage({ type: '', text: '' })
@@ -360,50 +353,57 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900 font-sans p-4" onKeyDown={handleKeyDown}>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 text-slate-800 font-sans p-4" onKeyDown={handleKeyDown}>
       
       {modalState.isOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
-              <div className="bg-white border border-gray-200 rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
-                  <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
+          <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 w-full max-w-sm shadow-xl text-center space-y-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
                       modalState.type === 'error' ? 'bg-red-50 text-red-500' : 
                       modalState.type === 'success' ? 'bg-emerald-50 text-emerald-500' : 
                       modalState.type === 'warning' ? 'bg-amber-50 text-amber-500' : 
                       'bg-blue-50 text-blue-500'
                   }`}>
-                      {modalState.type === 'error' && <AlertCircle size={28}/>}
-                      {modalState.type === 'success' && <CheckCircle2 size={28}/>}
-                      {modalState.type === 'warning' && <AlertTriangle size={28}/>}
-                      {modalState.type === 'info' && <Info size={28}/>}
+                      {modalState.type === 'error' && <AlertCircle size={24}/>}
+                      {modalState.type === 'success' && <CheckCircle2 size={24}/>}
+                      {modalState.type === 'warning' && <AlertTriangle size={24}/>}
+                      {modalState.type === 'info' && <Info size={24}/>}
                   </div>
                   <div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">{modalState.title}</h3>
-                      <p className="text-sm text-gray-600 leading-relaxed">{modalState.message}</p>
+                      <h3 className="text-base font-semibold text-gray-900 mb-1">{modalState.title}</h3>
+                      <p className="text-sm text-gray-500 leading-relaxed">{modalState.message}</p>
                   </div>
                   <div className="pt-2">
-                      <button onClick={closeModal} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-3 rounded-xl transition active:scale-95">Entendi</button>
+                      <button onClick={closeModal} className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2.5 rounded-xl border border-gray-200 transition active:scale-95 text-sm">
+                          Compreendido
+                      </button>
                   </div>
               </div>
           </div>
       )}
 
       {isPdfModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
-                <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={20}/></button>
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><FileText className="text-blue-600" size={20}/> Baixar Escala</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-xl relative">
+                <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={18}/></button>
+                <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2"><FileText className="text-blue-600" size={18}/> Baixar Escala Mensal</h3>
                 <div className="space-y-4">
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                        <label className="text-xs text-gray-500 font-bold uppercase block mb-2">Selecione o Mês</label>
-                        <input type="month" value={pdfMonth} onChange={e => setPdfMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg p-3 text-gray-900 outline-none focus:border-blue-600 transition" />
+                    <div>
+                        <label className="text-xs text-gray-500 font-semibold uppercase block mb-1">Mês de Referência</label>
+                        <input 
+                            type="month" 
+                            value={pdfMonth} 
+                            onChange={e => setPdfMonth(e.target.value)} 
+                            className="w-full bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl p-2.5 text-sm text-gray-900 outline-none transition" 
+                        />
                     </div>
                     {downloadMessage.text && (
-                        <div className={`text-xs p-3 rounded-lg flex items-center gap-2 ${downloadMessage.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
-                            {downloadMessage.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>} {downloadMessage.text}
+                        <div className={`text-xs p-3 rounded-xl flex items-center gap-2 border ${downloadMessage.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
+                            {downloadMessage.type === 'error' ? <AlertCircle size={14}/> : <CheckCircle2 size={14}/>} {downloadMessage.text}
                         </div>
                     )}
-                    <button onClick={handlePublicDownload} disabled={isDownloading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
-                        {isDownloading ? <span className="animate-pulse">Gerando...</span> : <><Download size={18}/> Baixar Arquivo PDF</>}
+                    <button onClick={handlePublicDownload} disabled={isDownloading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-sm">
+                        {isDownloading ? <span className="animate-pulse">Gerando Documento...</span> : <><Download size={16}/> Baixar Arquivo PDF</>}
                     </button>
                 </div>
             </div>
@@ -411,59 +411,65 @@ export default function LoginPage() {
       )}
 
       {isEmailModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
-                <button onClick={() => setIsEmailModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={20}/></button>
-                <div className="mb-6 text-center">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 border border-blue-100"><Mail size={24}/></div>
-                    <h3 className="text-lg font-bold text-gray-900">Suas Escalas</h3>
-                    <p className="text-xs text-gray-500 mt-1">Cadastre-se para receber sua escala na hora e ser lembrado antes das missas.</p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-xl relative max-h-[90vh] overflow-y-auto [scrollbar-width:none]">
+                <button onClick={() => setIsEmailModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={18}/></button>
+                <div className="mb-5 text-center">
+                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 border border-blue-100"><BellRing size={20}/></div>
+                    <h3 className="text-base font-semibold text-gray-900">Alertas de Escala</h3>
+                    <p className="text-xs text-gray-500 mt-1">Inscreva-se para receber avisos antes das missas.</p>
                 </div>
                 
                 <div className="space-y-4">
                     {emailMessage.text && (
-                        <div className={`text-xs p-3 rounded-lg flex items-center gap-2 ${emailMessage.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
-                            {emailMessage.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>} {emailMessage.text}
+                        <div className={`text-xs p-3 rounded-xl flex items-center gap-2 border ${emailMessage.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
+                            {emailMessage.type === 'error' ? <AlertCircle size={14}/> : <CheckCircle2 size={14}/>} {emailMessage.text}
                         </div>
                     )}
                     
                     {acolitosAtivos.length === 0 ? (
-                        <div className="bg-amber-50 border border-amber-200 text-amber-700 p-4 rounded-xl text-center text-sm font-medium">
-                            Todos os acólitos ativos já cadastraram o e-mail!
+                        <div className="bg-slate-50 border border-slate-200 text-slate-600 p-4 rounded-xl text-center text-xs font-medium">
+                            Todos os acólitos ativos já cadastraram seus e-mails.
                         </div>
                     ) : (
                         <>
                             <div>
-                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Selecione seu Nome</label>
-                                <select 
-                                    value={emailForm.acolitoId} 
-                                    onChange={e => setEmailForm({...emailForm, acolitoId: e.target.value})} 
-                                    className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 text-sm"
-                                >
-                                    <option value="">Selecione...</option>
-                                    {acolitosAtivos.map(ac => (
-                                        <option key={ac.id} value={ac.id}>{ac.nome} {ac.sobrenome}</option>
-                                    ))}
-                                </select>
+                                <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">Localize seu Nome</label>
+                                <div className="relative">
+                                    <UserCircle size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <select 
+                                        value={emailForm.acolitoId} 
+                                        onChange={e => setEmailForm({...emailForm, acolitoId: e.target.value})} 
+                                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-gray-900 text-sm"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        {acolitosAtivos.map(ac => (
+                                            <option key={ac.id} value={ac.id}>{ac.nome} {ac.sobrenome}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Seu Melhor E-mail</label>
-                                <input 
-                                    type="email" 
-                                    placeholder="exemplo@gmail.com" 
-                                    value={emailForm.email} 
-                                    onChange={e => setEmailForm({...emailForm, email: e.target.value})} 
-                                    className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 text-sm" 
-                                />
+                                <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">Endereço de E-mail</label>
+                                <div className="relative">
+                                    <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input 
+                                        type="email" 
+                                        placeholder="exemplo@email.com" 
+                                        value={emailForm.email} 
+                                        onChange={e => setEmailForm({...emailForm, email: e.target.value})} 
+                                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-gray-900 text-sm" 
+                                    />
+                                </div>
                             </div>
 
                             <button 
                                 onClick={handleSubscribeEmail} 
                                 disabled={loading} 
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 mt-4 shadow-lg shadow-blue-600/20 active:scale-95"
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2 mt-2 shadow-sm active:scale-95 text-sm"
                             >
-                                {loading ? <span className="animate-pulse">Buscando Escalas...</span> : 'Cadastrar e Receber Escalas'}
+                                {loading ? <span className="animate-pulse">Configurando...</span> : 'Confirmar Cadastro'}
                             </button>
                         </>
                     )}
@@ -472,93 +478,106 @@ export default function LoginPage() {
         </div>
       )}
 
-      <div className="w-full max-w-md bg-white rounded-[2rem] border border-gray-200 shadow-2xl overflow-hidden relative transition-all duration-300">
-        <div className="bg-gray-50 p-8 text-center border-b border-gray-200 relative">
+      <div className="w-full max-w-[380px] bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden relative transition-all duration-300">
+        
+        <div className="bg-slate-50 p-6 text-center border-b border-gray-100 relative">
           {showLoginForm && (
               <button 
                 onClick={() => { setShowLoginForm(false); setError('') }} 
-                className="absolute top-6 left-6 p-2 bg-white rounded-full text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-900 transition shadow-sm"
+                className="absolute top-5 left-5 p-1.5 bg-white rounded-lg text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-900 transition shadow-sm"
               >
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={18} />
               </button>
           )}
           
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-blue-600/40 transition-transform hover:scale-105">
-            <Lock size={32} className="text-white" />
+          <div className="w-12 h-12 bg-blue-600 rounded-xl mx-auto flex items-center justify-center mb-3 shadow-md shadow-blue-600/20">
+            <Lock size={22} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Paróquia São José Operário</h1>
-          <p className="text-gray-500 text-sm mt-2 font-medium">Acesso ao Sistema de Escalas</p>
+          <h1 className="text-lg font-semibold text-gray-900">Paróquia SJO</h1>
+          <p className="text-gray-500 text-xs mt-1">Acesso ao Sistema de Escalas</p>
         </div>
 
-        <div className="p-8">
+        <div className="p-6">
             {!showLoginForm ? (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div>
-                        <button 
-                            onClick={() => setIsPdfModalOpen(true)}
-                            className="group w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-5 rounded-2xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-between"
-                        >
-                            <div className="text-left"><span className="block text-lg font-bold">Baixar Escala de {currentMonthName}</span></div>
-                            <div className="bg-white/20 p-3 rounded-xl group-hover:bg-white/30 transition"><Download size={24} /></div>
-                        </button>
-                    </div>
+                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    
+                    <button 
+                        onClick={() => setIsPdfModalOpen(true)}
+                        className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 p-3.5 rounded-xl transition flex items-center justify-between group shadow-sm"
+                    >
+                        <span className="text-sm font-medium">Baixar Escala Mensal</span>
+                        <Download size={18} className="text-blue-500 group-hover:scale-110 transition" />
+                    </button>
 
                     <button 
                         onClick={() => setIsEmailModalOpen(true)}
-                        className="w-full bg-green-50 border border-green-200 hover:border-green-300 hover:bg-green-100 text-green-700 p-4 rounded-xl transition flex items-center justify-center gap-3 group shadow-sm"
+                        className="w-full bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 p-3.5 rounded-xl transition flex items-center justify-between group shadow-sm"
                     >
-                        <BellRing size={20} className="group-hover:animate-bounce" />
-                        <span className="font-bold">Cadastrar Alertas e Ver Escalas</span>
+                        <span className="text-sm font-medium">Cadastrar Alertas</span>
+                        <BellRing size={18} className="text-emerald-500 group-hover:animate-bounce" />
                     </button>
 
-                    <div className="relative py-5">
-                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-                        <div className="relative flex justify-center text-xs font-bold uppercase tracking-widest"><span className="bg-white px-4 text-gray-400">Diretoria</span></div>
+                    <div className="relative py-4">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-gray-100"></div>
+                        </div>
+                        <div className="relative flex justify-center text-[10px] font-semibold uppercase tracking-widest">
+                            <span className="bg-white px-3 text-gray-400">Acesso Restrito</span>
+                        </div>
                     </div>
 
                     <button 
                         onClick={() => setShowLoginForm(true)}
-                        className="w-full bg-white border border-gray-300 hover:border-gray-400 text-gray-700 hover:bg-gray-50 p-4 rounded-xl transition flex items-center justify-center gap-3 group shadow-sm"
+                        className="w-full bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 p-3.5 rounded-xl transition flex items-center justify-center gap-2 group shadow-sm text-sm font-medium"
                     >
-                        <UserCog size={20} className="text-gray-400 group-hover:text-blue-600 transition"/>
-                        <span className="font-bold">Acesso Administrativo</span>
+                        <UserCog size={16} className="text-gray-400 group-hover:text-gray-700 transition"/>
+                        <span>Área Administrativa</span>
                     </button>
                 </div>
             ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                     {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-xl text-center font-medium animate-pulse flex items-center gap-2 justify-center">
-                            <AlertCircle size={16} /> {error}
+                        <div className="bg-red-50 border border-red-200 text-red-600 text-xs p-3 rounded-xl text-center font-medium flex items-center gap-2 justify-center">
+                            <AlertCircle size={14} /> {error}
                         </div>
                     )}
+
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Usuário</label>
+                        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">Usuário</label>
                         <div className="relative">
                             <input 
-                                type="text" value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})}
-                                className="w-full p-4 pl-12 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 font-medium lowercase"
-                                placeholder="ex: joao.silva" autoFocus
+                                type="text" 
+                                value={form.usuario}
+                                onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})}
+                                className="w-full p-3 pl-10 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-gray-900 text-sm"
+                                placeholder="ex: joao.silva"
+                                autoFocus
                             />
-                            <AtSign size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <AtSign size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         </div>
                     </div>
+
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha</label>
+                        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">Senha</label>
                         <div className="relative">
                             <input 
-                                type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})}
-                                className="w-full p-4 pl-12 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 font-medium"
+                                type="password" 
+                                value={form.password}
+                                onChange={e => setForm({...form, password: e.target.value})}
+                                className="w-full p-3 pl-10 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition text-gray-900 text-sm"
                                 placeholder="••••••••"
                             />
-                            <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         </div>
                     </div>
+
                     <button 
-                        onClick={handleLogin} disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-600/20 mt-4 flex items-center justify-center gap-2"
+                        onClick={handleLogin}
+                        disabled={loading}
+                        className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 rounded-xl transition-all active:scale-95 shadow-md mt-2 flex items-center justify-center gap-2 text-sm"
                     >
                         {loading ? 'Verificando...' : 'Entrar no Painel'}
-                        {!loading && <ArrowRight size={20} />}
+                        {!loading && <ArrowRight size={16} />}
                     </button>
                 </div>
             )}
