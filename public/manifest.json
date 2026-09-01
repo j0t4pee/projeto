@@ -1,0 +1,17 @@
+{
+  "name": "Escalas de Acólitos",
+  "short_name": "Escalas",
+  "description": "Sistema de Gestão de Escalas de Acólitos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

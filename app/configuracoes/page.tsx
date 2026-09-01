@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, query, orderBy, where, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, deleteDoc, doc, writeBatch } from 'firebase/firestore'
 import MainLayout from '@/app/components/MainLayout'
 import { 
     CalendarOff, Trash2, Plus, AlertCircle, ShieldAlert, Search, 
@@ -38,27 +38,38 @@ const formatDateStr = (date: Date) => {
     return `${y}-${m}-${d}`
 }
 
-const RangeCalendar = ({ 
+const SmartCalendar = ({ 
     restricoes, 
     acolitoSelecionado, 
+    mode,
     dataInicio, 
     dataFim, 
-    onChange 
+    datasMultiplas,
+    onChangeRange,
+    onChangeMulti,
+    onChangeMode
 }: { 
     restricoes: Restricao[], 
     acolitoSelecionado: string, 
+    mode: 'range' | 'multiple',
     dataInicio: string, 
     dataFim: string, 
-    onChange: (inicio: string, fim: string) => void 
+    datasMultiplas: string[],
+    onChangeRange: (inicio: string, fim: string) => void,
+    onChangeMulti: (dates: string[]) => void,
+    onChangeMode: (mode: 'range' | 'multiple') => void
 }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date())
 
     useEffect(() => {
-        if (dataInicio) {
-            const [y, m, d] = dataInicio.split('-').map(Number)
+        if (mode === 'range' && dataInicio) {
+            const [y, m] = dataInicio.split('-').map(Number)
+            setCurrentMonth(new Date(y, m - 1, 1))
+        } else if (mode === 'multiple' && datasMultiplas.length > 0) {
+            const [y, m] = datasMultiplas[datasMultiplas.length - 1].split('-').map(Number)
             setCurrentMonth(new Date(y, m - 1, 1))
         }
-    }, [dataInicio])
+    }, [dataInicio, datasMultiplas, mode])
 
     const blockedDates = useMemo(() => {
         const dates = new Set<string>()
@@ -79,13 +90,21 @@ const RangeCalendar = ({
     }, [restricoes, acolitoSelecionado])
 
     const handleDateClick = (dateStr: string) => {
-        if (!dataInicio || (dataInicio && dataFim)) {
-            onChange(dateStr, '')
-        } else {
-            if (dateStr < dataInicio) {
-                onChange(dateStr, dataInicio)
+        if (mode === 'multiple') {
+            if (datasMultiplas.includes(dateStr)) {
+                onChangeMulti(datasMultiplas.filter(d => d !== dateStr))
             } else {
-                onChange(dataInicio, dateStr)
+                onChangeMulti([...datasMultiplas, dateStr].sort())
+            }
+        } else {
+            if (!dataInicio || (dataInicio && dataFim)) {
+                onChangeRange(dateStr, '')
+            } else {
+                if (dateStr < dataInicio) {
+                    onChangeRange(dateStr, dataInicio)
+                } else {
+                    onChangeRange(dataInicio, dateStr)
+                }
             }
         }
     }
@@ -102,14 +121,15 @@ const RangeCalendar = ({
         const dateStr = formatDateStr(new Date(year, month, d))
         
         const isBlocked = blockedDates.has(dateStr)
-        const isStart = dateStr === dataInicio
-        const isEnd = dateStr === dataFim
-        const isBetween = dataInicio && dataFim && dateStr > dataInicio && dateStr < dataFim
+        const isStart = mode === 'range' && dateStr === dataInicio
+        const isEnd = mode === 'range' && dateStr === dataFim
+        const isBetween = mode === 'range' && dataInicio && dataFim && dateStr > dataInicio && dateStr < dataFim
+        const isMultiSelected = mode === 'multiple' && datasMultiplas.includes(dateStr)
         
         let bgClass = "hover:bg-gray-100 text-gray-700"
         
         if (isBlocked) bgClass = "bg-orange-100 text-orange-700 font-bold border border-orange-200 cursor-not-allowed"
-        else if (isStart || isEnd) bgClass = "bg-blue-600 text-white font-bold shadow-md"
+        else if (isStart || isEnd || isMultiSelected) bgClass = "bg-blue-600 text-white font-bold shadow-md"
         else if (isBetween) bgClass = "bg-blue-50 text-blue-700 font-bold"
 
         days.push(
@@ -127,6 +147,23 @@ const RangeCalendar = ({
 
     return (
         <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-2xl w-full z-10 animate-in fade-in zoom-in-95 duration-200 relative mt-2">
+            
+            {/* Toggle de Modo */}
+            <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 mb-4">
+                <button 
+                    onClick={(e) => { e.preventDefault(); onChangeMode('multiple') }} 
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition ${mode === 'multiple' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Dias Saltados
+                </button>
+                <button 
+                    onClick={(e) => { e.preventDefault(); onChangeMode('range') }} 
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition ${mode === 'range' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Período Contínuo
+                </button>
+            </div>
+
             <div className="flex justify-between items-center mb-4">
                 <button onClick={(e) => { e.preventDefault(); setCurrentMonth(new Date(year, month - 1, 1)) }} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronLeft size={16}/></button>
                 <span className="text-xs font-bold capitalize text-gray-900 tracking-wider">
@@ -134,6 +171,7 @@ const RangeCalendar = ({
                 </span>
                 <button onClick={(e) => { e.preventDefault(); setCurrentMonth(new Date(year, month + 1, 1)) }} className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition"><ChevronRight size={16}/></button>
             </div>
+            
             <div className="grid grid-cols-7 gap-1 text-center mb-2">
                 {['D','S','T','Q','Q','S','S'].map((d, i) => <span key={i} className="text-[10px] text-gray-400 font-bold uppercase">{d}</span>)}
             </div>
@@ -156,6 +194,7 @@ const RangeCalendar = ({
 }
 
 export default function ConfiguracoesPage() {
+    const router = useRouter()
     const [userProfile, setUserProfile] = useState('padrao')
     const [acolitos, setAcolitos] = useState<Acolito[]>([])
     const [restricoes, setRestricoes] = useState<Restricao[]>([])
@@ -167,10 +206,13 @@ export default function ConfiguracoesPage() {
     const [searchTerm, setSearchTerm] = useState('')
     const [currentPage, setCurrentPage] = useState(1)
 
+    const [selectionMode, setSelectionMode] = useState<'range' | 'multiple'>('multiple')
+
     const [formData, setFormData] = useState({
         acolito_nome: '',
         data_inicio: '',
-        data_fim: ''
+        data_fim: '',
+        datas_multiplas: [] as string[]
     })
 
     const [customAlert, setCustomAlert] = useState<AlertState>({
@@ -182,12 +224,11 @@ export default function ConfiguracoesPage() {
 
     useEffect(() => {
         const authData = localStorage.getItem('auth_token')
-        if (authData) {
-            try {
-                const user = JSON.parse(authData)
-                setUserProfile(user.perfil || 'padrao')
-            } catch (e) { console.error(e) }
-        }
+        if (!authData) { router.push('/login'); return }
+        try {
+            const user = JSON.parse(authData)
+            setUserProfile(user.perfil || 'padrao')
+        } catch (e) { router.push('/login') }
         fetchData()
     }, [])
 
@@ -260,24 +301,42 @@ export default function ConfiguracoesPage() {
         if (!formData.acolito_nome) {
             triggerAlert("Atenção", "Selecione o acólito primeiro.", "warning"); return
         }
-        if (!formData.data_inicio) {
-            triggerAlert("Atenção", "Selecione ao menos a data de início no calendário.", "warning"); return
-        }
-
-        const dataFim = formData.data_fim || formData.data_inicio
-
-        const payload = {
-            acolito_nome: formData.acolito_nome,
-            data_inicio: formData.data_inicio,
-            data_fim: dataFim
-        }
 
         try {
-            await addDoc(collection(db, 'restricoes'), payload)
-            setFormData({ acolito_nome: '', data_inicio: '', data_fim: '' })
+            const batch = writeBatch(db)
+
+            if (selectionMode === 'multiple') {
+                if (formData.datas_multiplas.length === 0) {
+                    triggerAlert("Atenção", "Selecione ao menos um dia no calendário.", "warning"); return
+                }
+                
+                formData.datas_multiplas.forEach(dateStr => {
+                    const newRef = doc(collection(db, 'restricoes'))
+                    batch.set(newRef, {
+                        acolito_nome: formData.acolito_nome,
+                        data_inicio: dateStr,
+                        data_fim: dateStr
+                    })
+                })
+            } else {
+                if (!formData.data_inicio) {
+                    triggerAlert("Atenção", "Selecione a data de início no calendário.", "warning"); return
+                }
+                const dataFim = formData.data_fim || formData.data_inicio
+                const newRef = doc(collection(db, 'restricoes'))
+                batch.set(newRef, {
+                    acolito_nome: formData.acolito_nome,
+                    data_inicio: formData.data_inicio,
+                    data_fim: dataFim
+                })
+            }
+
+            await batch.commit()
+            
+            setFormData({ acolito_nome: '', data_inicio: '', data_fim: '', datas_multiplas: [] })
             setIsCalendarOpen(false)
             fetchData()
-            triggerAlert("Sucesso", "Restrição cadastrada com sucesso!", "success")
+            triggerAlert("Sucesso", "Restrições salvas com sucesso!", "success")
         } catch (error: any) {
             triggerAlert("Erro", "Erro ao salvar restrição: " + error.message, "error")
         }
@@ -412,7 +471,7 @@ export default function ConfiguracoesPage() {
                         
                         <div className="md:col-span-1 bg-white border border-gray-200 rounded-3xl p-6 shadow-sm sticky top-8 z-20">
                             <h2 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                <Plus size={18} className="text-blue-600"/> Adicionar Período
+                                <Plus size={18} className="text-blue-600"/> Adicionar Restrição
                             </h2>
                             
                             <div className="space-y-6">
@@ -434,7 +493,7 @@ export default function ConfiguracoesPage() {
                                         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-2xl z-[100] max-h-[280px] overflow-y-auto custom-scrollbar py-2 animate-in fade-in zoom-in-95 duration-150">
                                             <div 
                                                 onClick={() => {
-                                                    setFormData({...formData, acolito_nome: '', data_inicio: '', data_fim: ''})
+                                                    setFormData({...formData, acolito_nome: '', data_inicio: '', data_fim: '', datas_multiplas: []})
                                                     setIsDropdownOpen(false)
                                                 }}
                                                 className="px-4 py-3 text-sm font-medium text-red-500 hover:bg-red-50 cursor-pointer transition flex items-center"
@@ -449,7 +508,7 @@ export default function ConfiguracoesPage() {
                                                     <div 
                                                         key={a.id} 
                                                         onClick={() => {
-                                                            setFormData({...formData, acolito_nome: nomeCompleto, data_inicio: '', data_fim: ''})
+                                                            setFormData({...formData, acolito_nome: nomeCompleto, data_inicio: '', data_fim: '', datas_multiplas: []})
                                                             setIsDropdownOpen(false)
                                                             setIsCalendarOpen(true)
                                                         }}
@@ -465,7 +524,7 @@ export default function ConfiguracoesPage() {
                                 </div>
 
                                 <div className="relative" ref={calendarRef}>
-                                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">2. Definir restrição (De <span className="mx-1 font-normal text-gray-400 lowercase tracking-normal">/</span> Até)</label>
+                                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">2. Definir Datas</label>
                                     
                                     <div 
                                         onClick={() => {
@@ -475,28 +534,40 @@ export default function ConfiguracoesPage() {
                                         className={`flex items-center bg-gray-50 border rounded-xl overflow-hidden shadow-sm transition cursor-pointer select-none ${isCalendarOpen ? 'border-blue-600 ring-1 ring-blue-600 bg-white' : 'border-gray-200 hover:bg-gray-100'}`}
                                     >
                                         <div className="flex-1 p-3.5 text-sm flex items-center gap-2">
-                                            <CalendarIcon size={16} className={formData.data_inicio ? 'text-blue-600' : 'text-gray-400'}/>
-                                            <span className={formData.data_inicio ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
-                                                {formatDisplayDate(formData.data_inicio) || 'De'}
+                                            <CalendarIcon size={16} className={(selectionMode === 'multiple' && formData.datas_multiplas.length > 0) || (selectionMode === 'range' && formData.data_inicio) ? 'text-blue-600' : 'text-gray-400'}/>
+                                            <span className={(selectionMode === 'multiple' && formData.datas_multiplas.length > 0) || (selectionMode === 'range' && formData.data_inicio) ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
+                                                {selectionMode === 'multiple' 
+                                                    ? (formData.datas_multiplas.length > 0 ? `${formData.datas_multiplas.length} dia(s) selecionado(s)` : 'Selecionar dias...')
+                                                    : (formData.data_inicio ? formatDisplayDate(formData.data_inicio) : 'Data Inicial')
+                                                }
                                             </span>
                                         </div>
-                                        <div className="w-px h-8 bg-gray-200 shrink-0"></div>
-                                        <div className="flex-1 p-3.5 text-sm flex items-center gap-2">
-                                            <CalendarIcon size={16} className={formData.data_fim ? 'text-blue-600' : 'text-gray-400'}/>
-                                            <span className={formData.data_fim ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
-                                                {formatDisplayDate(formData.data_fim) || 'Até'}
-                                            </span>
-                                        </div>
+                                        
+                                        {selectionMode === 'range' && (
+                                            <>
+                                                <div className="w-px h-8 bg-gray-200 shrink-0"></div>
+                                                <div className="flex-1 p-3.5 text-sm flex items-center gap-2">
+                                                    <CalendarIcon size={16} className={formData.data_fim ? 'text-blue-600' : 'text-gray-400'}/>
+                                                    <span className={formData.data_fim ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}>
+                                                        {formatDisplayDate(formData.data_fim) || 'Data Final'}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                     
                                     {isCalendarOpen && (
                                         <div className="absolute top-full left-0 right-0 z-[100]">
-                                            <RangeCalendar 
+                                            <SmartCalendar 
                                                 restricoes={restricoes}
                                                 acolitoSelecionado={formData.acolito_nome}
+                                                mode={selectionMode}
                                                 dataInicio={formData.data_inicio}
                                                 dataFim={formData.data_fim}
-                                                onChange={(inicio, fim) => setFormData({...formData, data_inicio: inicio, data_fim: fim})}
+                                                datasMultiplas={formData.datas_multiplas}
+                                                onChangeMode={setSelectionMode}
+                                                onChangeRange={(inicio, fim) => setFormData({...formData, data_inicio: inicio, data_fim: fim})}
+                                                onChangeMulti={(dates) => setFormData({...formData, datas_multiplas: dates})}
                                             />
                                         </div>
                                     )}
