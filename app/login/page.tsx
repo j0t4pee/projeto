@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/firebase'
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore'
-import { getMessaging, getToken } from 'firebase/messaging'
 import { 
     Lock, AtSign, ArrowRight, Download, X, FileText, 
-    Calendar as CalendarIcon, CheckCircle2, AlertCircle, 
-    UserCog, ChevronLeft, LogIn, BellRing, Info, AlertTriangle
+    CheckCircle2, AlertCircle, UserCog, ChevronLeft, 
+    BellRing, Info, AlertTriangle, Mail
 } from 'lucide-react'
 
 const PLACE_SIGLA: { [key: string]: string } = {
@@ -16,8 +15,6 @@ const PLACE_SIGLA: { [key: string]: string } = {
     "Nsa. Sra. da Abadia": "NSA", "Santa Clara": "SC"
 }
 const ROLE_SIGLA: { [key: string]: string } = { 'Missal': 'M', 'Vela': 'V', 'Turíbulo': 'T', 'Naveta': 'N' }
-
-const VAPID_KEY = "BDHGO2p7Mg0HemxpPR5eoykbg1LZYldhPSq64zzZppxJeJJ5ZUmGJXjP-qNXRy0GktJOQFOugOTGdPs_DROUyWk"
 
 interface CustomModalState {
     isOpen: boolean
@@ -33,18 +30,25 @@ export default function LoginPage() {
   
   const [showLoginForm, setShowLoginForm] = useState(false)
 
+  // Modais
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false)
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  
+  // PDF States
   const [pdfMonth, setPdfMonth] = useState(new Date().toISOString().slice(0, 7))
   const [currentMonthName, setCurrentMonthName] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadMessage, setDownloadMessage] = useState({ type: '', text: '' })
 
+  // Email Cadastro States
+  const [acolitosAtivos, setAcolitosAtivos] = useState<any[]>([])
+  const [emailMessage, setEmailMessage] = useState({ type: '', text: '' })
+  const [emailForm, setEmailForm] = useState({ acolitoId: '', email: '' })
+
   const [form, setForm] = useState({
     usuario: '',
     password: ''
   })
-
-  const [pushStatus, setPushStatus] = useState<'idle'|'loading'|'granted'|'denied'>('idle')
 
   const [modalState, setModalState] = useState<CustomModalState>({
       isOpen: false,
@@ -59,13 +63,23 @@ export default function LoginPage() {
       const capitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1)
       setCurrentMonthName(capitalized)
 
-      if (typeof window !== 'undefined' && 'Notification' in window) {
-          if (window.Notification.permission === 'granted') {
-              setPushStatus('granted')
-          } else if (window.Notification.permission === 'denied') {
-              setPushStatus('denied')
+      // Busca acólitos (APENAS OS QUE NÃO TÊM E-MAIL)
+      const fetchAcolitos = async () => {
+          try {
+              const q = query(collection(db, 'acolitos'), where('ativo', '==', true))
+              const snap = await getDocs(q)
+              const list = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]
+              
+              // Filtro mágico: Só passa quem NÃO tem o campo email preenchido
+              const listSemEmail = list.filter(a => !a.email || a.email.trim() === '')
+              listSemEmail.sort((a, b) => a.nome.localeCompare(b.nome))
+              
+              setAcolitosAtivos(listSemEmail)
+          } catch (error) {
+              console.error("Erro ao buscar acólitos:", error)
           }
       }
+      fetchAcolitos()
   }, [])
 
   const triggerModal = (title: string, message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
@@ -76,14 +90,9 @@ export default function LoginPage() {
       setModalState(prev => ({ ...prev, isOpen: false }))
   }
 
-  const handleUsuarioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.toLowerCase().replace(/\s/g, '')
-    setForm({ ...form, usuario: value })
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-        handleLogin()
+        if (showLoginForm) handleLogin()
     }
   }
 
@@ -92,14 +101,12 @@ export default function LoginPage() {
         setError('Preencha usuário e senha.')
         return
     }
-
     setLoading(true)
     setError('')
 
     try {
-      const acolitosRef = collection(db, 'acolitos')
       const q = query(
-          acolitosRef, 
+          collection(db, 'acolitos'), 
           where("usuario", "==", form.usuario),
           where("senha", "==", form.password),
           where("ativo", "==", true)
@@ -118,21 +125,6 @@ export default function LoginPage() {
       }
 
       localStorage.setItem('auth_token', JSON.stringify(userData))
-      
-      if (typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
-          try {
-              const messaging = getMessaging()
-              const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY })
-              if (currentToken && currentToken !== userData.fcm_token) {
-                  await updateDoc(doc(db, 'acolitos', userData.id), {
-                      fcm_token: currentToken
-                  })
-              }
-          } catch(e) { 
-              console.error("Erro ao atualizar token no login:", e) 
-          }
-      }
-
       window.location.href = '/'
 
     } catch (err: any) {
@@ -142,56 +134,140 @@ export default function LoginPage() {
     }
   }
 
-  const requestPushPermission = async () => {
-      if (typeof window === 'undefined' || !('Notification' in window)) {
-          triggerModal(
-              "Aviso sobre iOS / iPhone", 
-              "No iPhone, para ativar as notificações, toque no botão Compartilhar do Safari e selecione 'Adicionar à Tela de Início'. Depois abra o app por lá!", 
-              "info"
-          )
-          return
-      }
+  const handleSubscribeEmail = async () => {
+    if (!emailForm.acolitoId || !emailForm.email) {
+        setEmailMessage({ type: 'error', text: 'Selecione o nome e preencha o e-mail.' })
+        return
+    }
+    
+    setLoading(true)
+    setEmailMessage({ type: '', text: '' })
 
-      if (!('serviceWorker' in navigator)) {
-          triggerModal("Não Suportado", "Service Worker não é suportado neste navegador.", "warning")
-          return
-      }
+    try {
+        const acolitoSelecionado = acolitosAtivos.find(a => a.id === emailForm.acolitoId)
+        if (!acolitoSelecionado) throw new Error('Acólito não encontrado.')
 
-      setPushStatus('loading')
+        // 1. Atualiza o e-mail no banco de dados
+        await updateDoc(doc(db, 'acolitos', acolitoSelecionado.id), { 
+            email: emailForm.email 
+        })
 
-      try {
-          const permission = await window.Notification.requestPermission()
-          
-          if (permission === 'granted') {
-              const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-                  scope: '/'
-              })
+        // 2. Busca as escalas futuras deste acólito
+        const todayStr = new Date().toISOString().split('T')[0]
+        const qEscalas = query(collection(db, 'escalas'), where("data", ">=", todayStr))
+        const snapEscalas = await getDocs(qEscalas)
+        
+        const minhasEscalas: any[] = []
+        const nomeBusca = acolitoSelecionado.nome.trim().toLowerCase()
+        
+        snapEscalas.forEach(docSnap => {
+            const dataEscala = docSnap.data()
+            const listaEscalados = Array.isArray(dataEscala.acolitos) ? dataEscala.acolitos : []
+            
+            const meuRegistro = listaEscalados.find((a: any) => {
+                if (!a) return false
+                if (a.id === acolitoSelecionado.id || a.acolitoId === acolitoSelecionado.id) return true
+                const nomeEscala = (a.nome || '').trim().toLowerCase()
+                return nomeEscala === nomeBusca || nomeBusca.includes(nomeEscala.replace('.', ''))
+            })
+            
+            if (meuRegistro) {
+                minhasEscalas.push({
+                    data: dataEscala.data,
+                    hora: dataEscala.hora,
+                    local: dataEscala.local,
+                    funcao: meuRegistro.funcao
+                })
+            }
+        })
 
-              await navigator.serviceWorker.ready
+        minhasEscalas.sort((a, b) => new Date(`${a.data}T${a.hora||'00:00'}`).getTime() - new Date(`${b.data}T${b.hora||'00:00'}`).getTime())
 
-              const messaging = getMessaging()
-              const token = await getToken(messaging, { 
-                  vapidKey: VAPID_KEY,
-                  serviceWorkerRegistration: registration 
-              })
+        // 3. Monta o texto do E-mail (Layout Compacto)
+        const primeiroNome = acolitoSelecionado.nome.split(' ')[0]
+        
+        let htmlEmail = `
+            <div style="margin-bottom: 15px;">
+                <p style="font-size: 15px; margin: 0 0 5px 0; color: #1f2937;">Olá, <b>${primeiroNome}</b>!</p>
+                <p style="font-size: 13px; margin: 0; color: #475569;">Seu e-mail foi cadastrado para receber alertas de missas.</p>
+            </div>
+        `
+        
+        if (minhasEscalas.length > 0) {
+            htmlEmail += `<h3 style="color: #1f2937; margin: 0 0 10px 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">📅 Suas Próximas Escalas (${minhasEscalas.length})</h3>`
+            
+            minhasEscalas.forEach(esc => {
+                const dataFormatada = esc.data.split('-').reverse().join('/')
+                const horaMissa = esc.hora?.substring(0,5)
 
-              if (token) {
-                  localStorage.setItem('pending_fcm_token', token)
-                  setPushStatus('granted')
-                  triggerModal("Tudo Pronto!", "Notificações ativadas com sucesso. Você receberá os avisos das suas escalas.", "success")
-              } else {
-                  setPushStatus('idle')
-                  triggerModal("Atenção", "Não foi possível gerar a chave de identificação do aparelho.", "error")
-              }
-          } else {
-              setPushStatus('denied')
-              triggerModal("Acesso Negado", "Você bloqueou as notificações. Ative nas permissões do navegador para receber os avisos.", "warning")
-          }
-      } catch (error: any) {
-          console.error("Erro detalhado ao ativar Push:", error)
-          setPushStatus('idle')
-          triggerModal("Erro ao Ativar", error?.message || "Verifique se o arquivo public/firebase-messaging-sw.js está configurado.", "error")
-      }
+                const dataStr = esc.data.replace(/-/g, '')
+                const [h, m] = (esc.hora || '00:00').split(':')
+                const startTime = `${dataStr}T${h}${m}00`
+                const endHour = (parseInt(h) + 1).toString().padStart(2, '0')
+                const endTime = `${dataStr}T${endHour}${m}00`
+
+                const text = encodeURIComponent('Missa: ' + esc.local)
+                const details = encodeURIComponent('Sua Função: ' + (esc.funcao || 'Padrão'))
+                const location = encodeURIComponent(esc.local)
+                const gCalUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${startTime}/${endTime}&details=${details}&location=${location}`
+
+                htmlEmail += `
+                    <div style="margin-bottom: 8px; padding: 10px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #2563eb; border-radius: 6px;">
+                        <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold; color: #0f172a;">
+                            ${dataFormatada} às ${horaMissa}
+                        </p>
+                        <p style="margin: 0 0 8px 0; color: #475569; font-size: 13px;">
+                            📍 ${esc.local} &nbsp;|&nbsp; 👕 Função: <b>${esc.funcao || 'Padrão'}</b>
+                        </p>
+                        <a href="${gCalUrl}" target="_blank" style="background-color: #16a34a; color: #ffffff; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block;">
+                            + Salvar na Agenda
+                        </a>
+                    </div>
+                `
+            })
+        } else {
+            htmlEmail += `<p style="margin: 10px 0; font-size: 13px; color: #475569;">Você não possui escalas futuras agendadas.</p>`
+        }
+        
+        htmlEmail += `
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
+                <p style="font-size: 11px; color: #64748b; margin: 0;">Você será avisado 24h e 3h antes de cada missa.</p>
+            </div>
+        `
+
+        const emailBodyLimpo = htmlEmail.replace(/\n/g, '').replace(/\s+/g, ' ')
+
+        // 4. Dispara o e-mail
+        const res = await fetch('/api/enviar-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                titulo: 'Sua Lista de Escalas', 
+                mensagem: emailBodyLimpo,
+                emails: [emailForm.email] 
+            })
+        })
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}))
+            throw new Error(errorData.error || "Falha ao enviar e-mail. Verifique as credenciais no servidor.")
+        }
+
+        // Remove o acólito da lista na mesma hora (para ele sumir do seletor)
+        setAcolitosAtivos(prev => prev.filter(a => a.id !== emailForm.acolitoId))
+
+        setEmailMessage({ type: 'success', text: `Enviado! ${minhasEscalas.length} escalas foram pro seu e-mail.` })
+        setTimeout(() => { 
+            setIsEmailModalOpen(false)
+            setEmailMessage({ type: '', text: '' })
+            setEmailForm({ acolitoId: '', email: '' }) 
+        }, 4000)
+
+    } catch (err: any) {
+        setEmailMessage({ type: 'error', text: err.message })
+    } finally { 
+        setLoading(false) 
+    }
   }
 
   const handlePublicDownload = async () => {
@@ -284,16 +360,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white font-sans p-4" onKeyDown={handleKeyDown}>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900 font-sans p-4" onKeyDown={handleKeyDown}>
       
       {modalState.isOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
+          <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
+              <div className="bg-white border border-gray-200 rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center space-y-4">
                   <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${
-                      modalState.type === 'error' ? 'bg-red-950/60 text-red-400 border border-red-800/50' : 
-                      modalState.type === 'success' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50' : 
-                      modalState.type === 'warning' ? 'bg-amber-950/60 text-amber-400 border border-amber-800/50' : 
-                      'bg-blue-950/60 text-blue-400 border border-blue-800/50'
+                      modalState.type === 'error' ? 'bg-red-50 text-red-500' : 
+                      modalState.type === 'success' ? 'bg-emerald-50 text-emerald-500' : 
+                      modalState.type === 'warning' ? 'bg-amber-50 text-amber-500' : 
+                      'bg-blue-50 text-blue-500'
                   }`}>
                       {modalState.type === 'error' && <AlertCircle size={28}/>}
                       {modalState.type === 'success' && <CheckCircle2 size={28}/>}
@@ -301,37 +377,32 @@ export default function LoginPage() {
                       {modalState.type === 'info' && <Info size={28}/>}
                   </div>
                   <div>
-                      <h3 className="text-lg font-bold text-white mb-1">{modalState.title}</h3>
-                      <p className="text-sm text-zinc-400 leading-relaxed">{modalState.message}</p>
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">{modalState.title}</h3>
+                      <p className="text-sm text-gray-600 leading-relaxed">{modalState.message}</p>
                   </div>
                   <div className="pt-2">
-                      <button 
-                          onClick={closeModal} 
-                          className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 rounded-xl transition active:scale-95"
-                      >
-                          Entendi
-                      </button>
+                      <button onClick={closeModal} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-3 rounded-xl transition active:scale-95">Entendi</button>
                   </div>
               </div>
           </div>
       )}
 
       {isPdfModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in zoom-in-95">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
-                <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition"><X size={20}/></button>
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText className="text-blue-500" size={20}/> Baixar Escala</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+                <button onClick={() => setIsPdfModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={20}/></button>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><FileText className="text-blue-600" size={20}/> Baixar Escala</h3>
                 <div className="space-y-4">
-                    <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                        <label className="text-xs text-zinc-500 font-bold uppercase block mb-2">Selecione o Mês</label>
-                        <input type="month" value={pdfMonth} onChange={e => setPdfMonth(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white outline-none focus:border-blue-600 transition" style={{colorScheme: 'dark'}} />
+                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <label className="text-xs text-gray-500 font-bold uppercase block mb-2">Selecione o Mês</label>
+                        <input type="month" value={pdfMonth} onChange={e => setPdfMonth(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg p-3 text-gray-900 outline-none focus:border-blue-600 transition" />
                     </div>
                     {downloadMessage.text && (
-                        <div className={`text-xs p-3 rounded-lg flex items-center gap-2 ${downloadMessage.type === 'error' ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'bg-green-900/30 text-green-400 border border-green-900/50'}`}>
+                        <div className={`text-xs p-3 rounded-lg flex items-center gap-2 ${downloadMessage.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
                             {downloadMessage.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>} {downloadMessage.text}
                         </div>
                     )}
-                    <button onClick={handlePublicDownload} disabled={isDownloading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2">
+                    <button onClick={handlePublicDownload} disabled={isDownloading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
                         {isDownloading ? <span className="animate-pulse">Gerando...</span> : <><Download size={18}/> Baixar Arquivo PDF</>}
                     </button>
                 </div>
@@ -339,139 +410,158 @@ export default function LoginPage() {
         </div>
       )}
 
-      <div className="w-full max-w-md bg-zinc-900 rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative transition-all duration-300">
-        
-        <div className="bg-zinc-800/50 p-8 text-center border-b border-zinc-800 relative">
+      {isEmailModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in zoom-in-95">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+                <button onClick={() => setIsEmailModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition"><X size={20}/></button>
+                <div className="mb-6 text-center">
+                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 border border-blue-100"><Mail size={24}/></div>
+                    <h3 className="text-lg font-bold text-gray-900">Suas Escalas</h3>
+                    <p className="text-xs text-gray-500 mt-1">Cadastre-se para receber sua escala na hora e ser lembrado antes das missas.</p>
+                </div>
+                
+                <div className="space-y-4">
+                    {emailMessage.text && (
+                        <div className={`text-xs p-3 rounded-lg flex items-center gap-2 ${emailMessage.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
+                            {emailMessage.type === 'error' ? <AlertCircle size={16}/> : <CheckCircle2 size={16}/>} {emailMessage.text}
+                        </div>
+                    )}
+                    
+                    {acolitosAtivos.length === 0 ? (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-700 p-4 rounded-xl text-center text-sm font-medium">
+                            Todos os acólitos ativos já cadastraram o e-mail!
+                        </div>
+                    ) : (
+                        <>
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Selecione seu Nome</label>
+                                <select 
+                                    value={emailForm.acolitoId} 
+                                    onChange={e => setEmailForm({...emailForm, acolitoId: e.target.value})} 
+                                    className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 text-sm"
+                                >
+                                    <option value="">Selecione...</option>
+                                    {acolitosAtivos.map(ac => (
+                                        <option key={ac.id} value={ac.id}>{ac.nome} {ac.sobrenome}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Seu Melhor E-mail</label>
+                                <input 
+                                    type="email" 
+                                    placeholder="exemplo@gmail.com" 
+                                    value={emailForm.email} 
+                                    onChange={e => setEmailForm({...emailForm, email: e.target.value})} 
+                                    className="w-full p-3 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 text-sm" 
+                                />
+                            </div>
+
+                            <button 
+                                onClick={handleSubscribeEmail} 
+                                disabled={loading} 
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 mt-4 shadow-lg shadow-blue-600/20 active:scale-95"
+                            >
+                                {loading ? <span className="animate-pulse">Buscando Escalas...</span> : 'Cadastrar e Receber Escalas'}
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
+
+      <div className="w-full max-w-md bg-white rounded-[2rem] border border-gray-200 shadow-2xl overflow-hidden relative transition-all duration-300">
+        <div className="bg-gray-50 p-8 text-center border-b border-gray-200 relative">
           {showLoginForm && (
               <button 
                 onClick={() => { setShowLoginForm(false); setError('') }} 
-                className="absolute top-6 left-6 p-2 bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition"
+                className="absolute top-6 left-6 p-2 bg-white rounded-full text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-900 transition shadow-sm"
               >
                   <ChevronLeft size={20} />
               </button>
           )}
           
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-blue-900/50 transition-transform hover:scale-105">
-            <Lock size={32} />
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-blue-600/40 transition-transform hover:scale-105">
+            <Lock size={32} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Acólitos - Paróquia São José Operário</h1>
-          <p className="text-zinc-400 text-sm mt-2">Acesso ao Sistema de Escalas</p>
+          <h1 className="text-2xl font-bold text-gray-900">Paróquia São José Operário</h1>
+          <p className="text-gray-500 text-sm mt-2 font-medium">Acesso ao Sistema de Escalas</p>
         </div>
 
         <div className="p-8">
-            
             {!showLoginForm ? (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    
                     <div>
                         <button 
                             onClick={() => setIsPdfModalOpen(true)}
-                            className="group w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white p-5 rounded-2xl transition-all shadow-lg shadow-blue-900/20 flex items-center justify-between"
+                            className="group w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-5 rounded-2xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-between"
                         >
-                            <div className="text-left">
-                                <span className="block text-lg font-bold">Baixar Escala de {currentMonthName}</span>
-                            </div>
-                            <div className="bg-blue-500/30 p-3 rounded-xl group-hover:bg-blue-500/50 transition">
-                                <Download size={24} />
-                            </div>
+                            <div className="text-left"><span className="block text-lg font-bold">Baixar Escala de {currentMonthName}</span></div>
+                            <div className="bg-white/20 p-3 rounded-xl group-hover:bg-white/30 transition"><Download size={24} /></div>
                         </button>
                     </div>
 
                     <button 
-                        onClick={requestPushPermission}
-                        disabled={pushStatus === 'granted' || pushStatus === 'loading'}
-                        className={`w-full border p-4 rounded-xl transition flex items-center justify-center gap-3 group ${
-                            pushStatus === 'granted' 
-                            ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-400 cursor-default' 
-                            : pushStatus === 'denied'
-                            ? 'bg-red-950/30 border-red-800/50 text-red-400'
-                            : 'bg-zinc-950 border-zinc-800 hover:border-blue-500 text-zinc-300 hover:text-blue-400'
-                        }`}
+                        onClick={() => setIsEmailModalOpen(true)}
+                        className="w-full bg-green-50 border border-green-200 hover:border-green-300 hover:bg-green-100 text-green-700 p-4 rounded-xl transition flex items-center justify-center gap-3 group shadow-sm"
                     >
-                        {pushStatus === 'loading' ? (
-                            <span className="font-medium animate-pulse">Solicitando permissão...</span>
-                        ) : pushStatus === 'granted' ? (
-                            <>
-                                <CheckCircle2 size={20} />
-                                <span className="font-medium">Notificações Ativadas</span>
-                            </>
-                        ) : (
-                            <>
-                                <BellRing size={20} className={pushStatus === 'denied' ? '' : 'group-hover:animate-bounce'} />
-                                <span className="font-medium">
-                                    {pushStatus === 'denied' ? 'Notificações Bloqueadas' : 'Ativar Notificações de Missa'}
-                                </span>
-                            </>
-                        )}
+                        <BellRing size={20} className="group-hover:animate-bounce" />
+                        <span className="font-bold">Cadastrar Alertas e Ver Escalas</span>
                     </button>
 
-                    <div className="relative py-4">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-zinc-800"></div>
-                        </div>
-                        <div className="relative flex justify-center text-xs font-bold uppercase tracking-widest">
-                            <span className="bg-zinc-900 px-3 text-zinc-600">DIRETORIA</span>
-                        </div>
+                    <div className="relative py-5">
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                        <div className="relative flex justify-center text-xs font-bold uppercase tracking-widest"><span className="bg-white px-4 text-gray-400">Diretoria</span></div>
                     </div>
 
                     <button 
                         onClick={() => setShowLoginForm(true)}
-                        className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white p-4 rounded-xl transition flex items-center justify-center gap-3 group"
+                        className="w-full bg-white border border-gray-300 hover:border-gray-400 text-gray-700 hover:bg-gray-50 p-4 rounded-xl transition flex items-center justify-center gap-3 group shadow-sm"
                     >
-                        <UserCog size={20} className="group-hover:text-blue-500 transition"/>
-                        <span className="font-medium">Acesso Administrativo</span>
+                        <UserCog size={20} className="text-gray-400 group-hover:text-blue-600 transition"/>
+                        <span className="font-bold">Acesso Administrativo</span>
                     </button>
-
                 </div>
             ) : (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                    
                     {error && (
-                        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-xl text-center font-medium animate-pulse flex items-center gap-2 justify-center">
+                        <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-xl text-center font-medium animate-pulse flex items-center gap-2 justify-center">
                             <AlertCircle size={16} /> {error}
                         </div>
                     )}
-
                     <div>
-                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Usuário</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Usuário</label>
                         <div className="relative">
                             <input 
-                                type="text" 
-                                value={form.usuario}
-                                onChange={handleUsuarioChange}
-                                className="w-full p-4 pl-12 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none transition text-blue-400 font-medium lowercase"
-                                placeholder="ex: joao.silva"
-                                autoFocus
+                                type="text" value={form.usuario} onChange={e => setForm({...form, usuario: e.target.value.toLowerCase().replace(/\s/g, '')})}
+                                className="w-full p-4 pl-12 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 font-medium lowercase"
+                                placeholder="ex: joao.silva" autoFocus
                             />
-                            <AtSign size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                            <AtSign size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                         </div>
                     </div>
-
                     <div>
-                        <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Senha</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Senha</label>
                         <div className="relative">
                             <input 
-                                type="password" 
-                                value={form.password}
-                                onChange={e => setForm({...form, password: e.target.value})}
-                                className="w-full p-4 pl-12 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-blue-600 outline-none transition text-white"
+                                type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})}
+                                className="w-full p-4 pl-12 rounded-xl bg-white border border-gray-300 focus:border-blue-600 outline-none transition text-gray-900 font-medium"
                                 placeholder="••••••••"
                             />
-                            <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                            <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                         </div>
                     </div>
-
                     <button 
-                        onClick={handleLogin}
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-900/20 mt-4 flex items-center justify-center gap-2"
+                        onClick={handleLogin} disabled={loading}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-blue-600/20 mt-4 flex items-center justify-center gap-2"
                     >
-                        {loading ? 'Verificando...' : 'Acessar Sistema'}
+                        {loading ? 'Verificando...' : 'Entrar no Painel'}
                         {!loading && <ArrowRight size={20} />}
                     </button>
                 </div>
             )}
-
         </div>
       </div>
     </div>
