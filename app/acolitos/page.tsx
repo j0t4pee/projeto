@@ -486,7 +486,7 @@ export default function AcolitosPage() {
           <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in zoom-in-95">
               <div className="bg-white border border-gray-100 rounded-2xl p-5 w-full max-w-sm shadow-xl text-center space-y-4">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${customAlert.type === 'error' ? 'bg-red-50 text-red-500' : customAlert.type === 'success' ? 'bg-emerald-50 text-emerald-500' : customAlert.type === 'warning' ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'}`}>
-                      {customAlert.type === 'error' && <AlertCircle size={24}/>}{customAlert.type === 'success' && <CheckCircle2 size={24}/>}{customAlert.type === 'warning' && <AlertTriangle size={24}/>}{customAlert.type === 'info' && <Info size={24}/>}
+                      {customAlert.type === 'error' && <AlertCircle size={24}/>}{customAlert.type === 'success' && <CheckCircle2 size={24}/>}{customAlert.type === 'warning' && <AlertTriangle size={24}/>}{customAlert.type === 'info' && <AlertCircle size={24}/>}
                   </div>
                   <div><h3 className="text-base font-semibold text-gray-900 mb-1">{customAlert.title}</h3><p className="text-sm text-gray-500 leading-relaxed">{customAlert.message}</p></div>
                   <div className="flex gap-3 pt-2">
