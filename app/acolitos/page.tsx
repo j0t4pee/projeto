@@ -330,6 +330,28 @@ export default function AcolitosPage() {
     })
   }
 
+  const getAcceptedNames = (nome: string, sobrenome: string) => {
+      const accepted = new Set<string>()
+      const norm = (s: string) => (s || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '').replace(/\s+/g, ' ')
+      
+      const full = norm(`${nome} ${sobrenome}`)
+      accepted.add(full)
+      accepted.add(norm(nome))
+      
+      const parts = full.split(' ').filter(Boolean)
+      if (parts.length >= 2) {
+          accepted.add(`${parts[0]} ${parts[1]}`)
+          accepted.add(`${parts[0]} ${parts[1][0]}`)
+          if (parts.length >= 3) {
+              accepted.add(`${parts[0]} ${parts[1]} ${parts[2]}`)
+              accepted.add(`${parts[0]} ${parts[1]} ${parts[2][0]}`)
+              accepted.add(`${parts[0]} ${parts[1][0]} ${parts[2]}`)
+              accepted.add(`${parts[0]} ${parts[2]}`)
+          }
+      }
+      return accepted
+  }
+
   const handleDispararEscalas = async () => {
       setLoading(true); triggerAlert("Enviando...", "Processando as escalas.", "info");
       try {
@@ -353,25 +375,24 @@ export default function AcolitosPage() {
               escalasMes.forEach(esc => {
                   const dataFormatada = esc.data.split('-').reverse().join('/');
                   const equipe = (esc.acolitos || []).map((a:any) => `<b>${a.nome}</b> (${a.funcao ? a.funcao.substring(0,1) : 'A'})`).join(', ');
-                  htmlGeral += `<div style="margin-bottom:10px;padding:12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:6px; font-family: Arial, sans-serif;"><p style="margin:0 0 5px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)} - ${esc.local}</p><p style="margin:0;color:#475569;font-size:13px;">Equipe: ${equipe || 'Ninguém escalado'}</p></div>`;
+                  htmlGeral += `<div style="margin-bottom:10px;padding:12px;background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:6px; font-family: Arial, sans-serif;"><p style="margin:0 0 5px 0;font-size:14px;font-weight:bold;color:#0f172a;">${dataFormatada} às ${esc.hora?.substring(0,5)} - ${esc.local}</p><p style="margin:0;color:#475569;font-size:13px;">👥 Equipe: ${equipe || 'Ninguém escalado'}</p></div>`;
               });
               const emailsLista = acolitosComEmail.map(a => a.email);
               const res = await fetch('/api/enviar-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: `Escala Geral - ${mesNome.toUpperCase()}/${year}`, mensagem: htmlGeral.replace(/\n/g, '').replace(/\s+/g, ' '), emails: emailsLista }) });
               if(!res.ok) throw new Error("Falha ao enviar.");
               enviados = emailsLista.length;
           } else {
-              const normalizeStr = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ')
+              const norm = (s: string) => (s || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '').replace(/\s+/g, ' ')
               
               for (const acolito of acolitosComEmail) {
-                  const nomeCompleto = normalizeStr(`${acolito.nome || ''} ${acolito.sobrenome || ''}`)
+                  const acceptedNames = getAcceptedNames(acolito.nome, acolito.sobrenome)
 
                   const minhasEscalas = escalasMes.filter(esc => {
                       const lista = Array.isArray(esc.acolitos) ? esc.acolitos : [];
                       return lista.some((a:any) => {
                           if(!a) return false;
                           if(a.id === acolito.id || a.acolitoId === acolito.id) return true;
-                          const nomeEscala = normalizeStr(a.nome || '');
-                          return nomeEscala === nomeCompleto;
+                          return acceptedNames.has(norm(a.nome));
                       });
                   });
 
@@ -381,11 +402,11 @@ export default function AcolitosPage() {
                       
                       minhasEscalas.forEach(esc => {
                           const dataFormatada = esc.data.split('-').reverse().join('/')
+                          
                           const myAc = (esc.acolitos || []).find((a:any) => { 
                               if(!a) return false;
                               if(a.id === acolito.id || a.acolitoId === acolito.id) return true;
-                              const nomeEscala = normalizeStr(a.nome || '');
-                              return nomeEscala === nomeCompleto;
+                              return acceptedNames.has(norm(a.nome));
                           });
 
                           const dataStr = esc.data.replace(/-/g, ''); const [h, m] = (esc.hora || '00:00').split(':'); const endHour = (parseInt(h) + 1).toString().padStart(2, '0');
@@ -517,7 +538,6 @@ export default function AcolitosPage() {
                 
                 <div className="lg:col-span-3 space-y-6">
                     
-                    {/* PAINEL DE PARÂMETROS DE NOTIFICAÇÃO */}
                     {canManage && (
                         <div className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
@@ -563,7 +583,6 @@ export default function AcolitosPage() {
                         </div>
                     )}
 
-                    {/* Search e Ações Gerais */}
                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
                         <div className="relative w-full md:w-80 lg:w-96">
                             <Search className="absolute left-3 top-2.5 text-gray-400" size={18}/>
@@ -574,8 +593,8 @@ export default function AcolitosPage() {
                                 <button onClick={() => setIsReportModalOpen(true)} className="flex-1 md:w-auto px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
                                     <FileText size={18}/> <span className="hidden sm:inline">Relatórios</span>
                                 </button>
-                                <button onClick={openNewForm} className="flex-1 md:w-auto px-4 py-2.5 bg-green-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
-                                    <Plus size={18}/> <span>Registrar</span>
+                                <button onClick={openNewForm} className="flex-1 md:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
+                                    <Plus size={18}/> <span>Novo Membro</span>
                                 </button>
                             </div>
                         )}
@@ -747,7 +766,7 @@ export default function AcolitosPage() {
                           <button onClick={() => { setIsTestModalOpen(false); cancelarTeste(); }} className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition"><X size={18}/></button>
                       </div>
 
-                      <div className="p-6 space-y-4">
+                      <div className="p-6 space-y-4 overflow-y-auto [scrollbar-width:none]">
                           {testCountdown !== null ? (
                               <div className="text-center py-4">
                                   <div className="w-16 h-16 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center mx-auto mb-3 border border-slate-200 animate-pulse shadow-sm">

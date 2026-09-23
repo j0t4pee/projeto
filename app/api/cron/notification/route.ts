@@ -5,7 +5,6 @@ import nodemailer from 'nodemailer'
 
 export async function GET(request: Request) {
   try {
-    // 1. Busca os parâmetros de notificação salvos pela Diretoria no Firestore
     let lembrete1_dias = 1
     let lembrete2_horas = 3
     let notifAtiva = true
@@ -36,15 +35,15 @@ export async function GET(request: Request) {
       }
     })
 
-    // 3. Busca escalas futuras a partir de hoje
     const now = new Date()
     const todayStr = now.toISOString().split('T')[0]
 
-    const escalasRef = collection(db, 'escalas')
-    const q = query(escalasRef, where('data', '>=', todayStr))
+    const q = query(collection(db, 'escalas'), where('data', '>=', todayStr))
     const snap = await getDocs(q)
 
     let emailsEnviados = 0
+    // Prevenção extra para não mandar 2x na mesma rodada se a pessoa estiver em 2 funções
+    const emailsJaEnviadosNestaRodada = new Set() 
 
     for (const docSnap of snap.docs) {
       const escala = docSnap.data()
@@ -53,9 +52,9 @@ export async function GET(request: Request) {
       const dataHoraMissa = new Date(`${escala.data}T${escala.hora}:00`)
       const diffHoras = (dataHoraMissa.getTime() - now.getTime()) / (1000 * 60 * 60)
 
-      // Verifica se a missa está na janela de disparo dos lembretes (com tolerância de 1 hora)
-      const ehLembrete1 = diffHoras >= (lembrete1_horas - 0.5) && diffHoras <= (lembrete1_horas + 0.5)
-      const ehLembrete2 = diffHoras >= (lembrete2_horas - 0.5) && diffHoras <= (lembrete2_horas + 0.5)
+      // MATEMÁTICA CORRIGIDA: Janela de exatamente 1 hora
+      const ehLembrete1 = diffHoras > (lembrete1_horas - 1) && diffHoras <= lembrete1_horas
+      const ehLembrete2 = diffHoras > (lembrete2_horas - 1) && diffHoras <= lembrete2_horas
 
       if (ehLembrete1 || ehLembrete2) {
         const acolitosLista = Array.isArray(escala.acolitos) ? escala.acolitos : []
@@ -63,22 +62,29 @@ export async function GET(request: Request) {
         for (const ac of acolitosLista) {
           if (!ac.nome) continue
 
-          // Busca dados do acólito no Firestore para pegar o e-mail
           const qAcolito = query(collection(db, 'acolitos'), where('ativo', '==', true))
           const snapAcolito = await getDocs(qAcolito)
 
-          const pNome = ac.nome.trim().toLowerCase().split(' ')[0]
+          const norm = (s: string) => (s || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '').replace(/\s+/g, ' ')
+          const nomeEscalaNorm = norm(ac.nome)
           
           let emailDestino = ''
+          
           snapAcolito.forEach(uDoc => {
             const uData = uDoc.data()
-            const uNome = (uData.nome || '').trim().toLowerCase()
-            if (uNome.startsWith(pNome) && uData.email) {
+            const uNomeNorm = norm(`${uData.nome || ''} ${uData.sobrenome || ''}`)
+            const uNomeP = norm(uData.nome)
+            
+            if ((nomeEscalaNorm === uNomeNorm || nomeEscalaNorm === uNomeP || uNomeNorm.includes(nomeEscalaNorm)) && uData.email) {
               emailDestino = uData.email
             }
           })
 
           if (emailDestino) {
+            const chaveUnica = `${emailDestino}-${escala.data}-${escala.hora}`
+            if (emailsJaEnviadosNestaRodada.has(chaveUnica)) continue
+            emailsJaEnviadosNestaRodada.add(chaveUnica)
+
             const dataFmt = escala.data.split('-').reverse().join('/')
             const horaFmt = escala.hora.substring(0, 5)
             const tempoTexto = ehLembrete1 ? `${lembrete1_dias} dia(s)` : `${lembrete2_horas} hora(s)`
@@ -99,7 +105,7 @@ export async function GET(request: Request) {
                   <div style="background-color: #f8fafc; padding: 16px; border-left: 4px solid #16a34a; border-radius: 6px; margin: 16px 0;">
                     <p style="margin: 0 0 6px 0; font-weight: bold; font-size: 16px; color: #0f172a;">${dataFmt} às ${horaFmt}</p>
                     <p style="margin: 0 0 10px 0; color: #475569;">📍 Local: <b>${escala.local}</b><br>👕 Função: <b>${ac.funcao || 'Padrão'}</b></p>
-                    <a href="${gCalUrl}" target="_blank" style="background-color: #16a34a; color: #ffffff; padding: 8px 14px; text-decoration: none; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-block;">+ Salvar na Agenda</a>
+                    <a href="${gCalUrl}" target="_blank" style="background-color: #16a34a; color: #ffffff; padding: 8px 14px; text-decoration: none; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-block;">Adicionar ao Calendário</a>
                   </div>
                 </div>
                 <div style="background-color: #f8fafc; padding: 12px; text-align: center; border-top: 1px solid #e2e8f0;">

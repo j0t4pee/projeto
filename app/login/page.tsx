@@ -129,6 +129,28 @@ export default function LoginPage() {
     }
   }
 
+  const getAcceptedNames = (nome: string, sobrenome: string) => {
+      const accepted = new Set<string>()
+      const norm = (s: string) => (s || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '').replace(/\s+/g, ' ')
+      
+      const full = norm(`${nome} ${sobrenome}`)
+      accepted.add(full)
+      accepted.add(norm(nome))
+      
+      const parts = full.split(' ').filter(Boolean)
+      if (parts.length >= 2) {
+          accepted.add(`${parts[0]} ${parts[1]}`)
+          accepted.add(`${parts[0]} ${parts[1][0]}`)
+          if (parts.length >= 3) {
+              accepted.add(`${parts[0]} ${parts[1]} ${parts[2]}`)
+              accepted.add(`${parts[0]} ${parts[1]} ${parts[2][0]}`)
+              accepted.add(`${parts[0]} ${parts[1][0]} ${parts[2]}`)
+              accepted.add(`${parts[0]} ${parts[2]}`)
+          }
+      }
+      return accepted
+  }
+
   const handleSubscribeEmail = async () => {
     if (!emailForm.acolitoId || !emailForm.email) {
         setEmailMessage({ type: 'error', text: 'Selecione o nome e preencha o e-mail.' })
@@ -152,8 +174,8 @@ export default function LoginPage() {
         
         const minhasEscalas: any[] = []
         
-        const normalizeStr = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ')
-        const nomeCompleto = normalizeStr(`${acolitoSelecionado.nome || ''} ${acolitoSelecionado.sobrenome || ''}`)
+        const acceptedNames = getAcceptedNames(acolitoSelecionado.nome, acolitoSelecionado.sobrenome)
+        const norm = (s: string) => (s || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '').replace(/\s+/g, ' ')
         
         snapEscalas.forEach(docSnap => {
             const dataEscala = docSnap.data()
@@ -162,9 +184,7 @@ export default function LoginPage() {
             const meuRegistro = listaEscalados.find((a: any) => {
                 if (!a) return false
                 if (a.id === acolitoSelecionado.id || a.acolitoId === acolitoSelecionado.id) return true
-                
-                const nomeEscala = normalizeStr(a.nome || '')
-                return nomeEscala === nomeCompleto 
+                return acceptedNames.has(norm(a.nome))
             })
             
             if (meuRegistro) {
